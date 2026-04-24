@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <filter id="noise">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.12 0 0 0 0 0.11 0 0 0 0 0.09 0 0 0 0.35 0"/>
+    </filter>
+    <filter id="noise-overlay">
+      <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0.72 0 0 0 0 0.62 0 0 0 0 0.50 0 0 0 0.08 0"/>
+    </filter>
+  </defs>
+
+  <!-- Paper background -->
+  <rect width="1200" height="630" fill="#f5efe4"/>
+
+  <!-- Subtle texture -->
+  <rect width="1200" height="630" filter="url(#noise-overlay)" opacity="0.5"/>
+
+  <!-- Top rule -->
+  <line x1="80" y1="80" x2="1120" y2="80" stroke="#d8cdb6" stroke-width="1"/>
+  <!-- Bottom rule -->
+  <line x1="80" y1="550" x2="1120" y2="550" stroke="#d8cdb6" stroke-width="1"/>
+
+  <!-- Red pin dot + halo ring — centered, upper zone -->
+  <circle cx="600" cy="220" r="38" fill="none" stroke="#b9441f" stroke-width="2" opacity="0.35"/>
+  <circle cx="600" cy="220" r="22" fill="#b9441f"/>
+
+  <!-- Wordmark: "Take a Hike" -->
+  <!-- "Take " -->
+  <text x="430" y="345" font-family="Georgia, 'Iowan Old Style', serif" font-size="72" font-weight="700" fill="#1f1b16" letter-spacing="-1">Take</text>
+  <!-- italic "a" in accent red -->
+  <text x="614" y="345" font-family="Georgia, 'Iowan Old Style', serif" font-size="72" font-style="italic" font-weight="700" fill="#b9441f" letter-spacing="-1">a</text>
+  <!-- " Hike" -->
+  <text x="654" y="345" font-family="Georgia, 'Iowan Old Style', serif" font-size="72" font-weight="700" fill="#1f1b16" letter-spacing="-1">Hike</text>
+
+  <!-- Tagline -->
+  <text x="600" y="405" font-family="'Inter', system-ui, sans-serif" font-size="18" font-weight="500" fill="#8a7f70" letter-spacing="4" text-anchor="middle" text-transform="uppercase">TRAIL NOTES FROM NORTHERN CALIFORNIA</text>
+
+  <!-- Noise grain overlay -->
+  <rect width="1200" height="630" filter="url(#noise)" opacity="0.3"/>
+</svg>

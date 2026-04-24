@@ -13,6 +13,8 @@ const trails = defineCollection({
     elevation_ft: z.number().optional(),
     stars: z.number().min(1).max(5).optional(),
     summary: z.string(),
+    substack_url: z.string().url(),
+    hero_image: z.string().url().optional(),
   }),
 });
 
