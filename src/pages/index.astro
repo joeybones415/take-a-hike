@@ -1,0 +1,200 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import Map from '../components/Map.astro';
+
+const allTrails = await getCollection('trails');
+allTrails.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+
+const pins = allTrails.map(t => ({
+  slug: t.id.replace(/\.md$/, ''),
+  title: t.data.title,
+  summary: t.data.summary,
+  lat: t.data.lat,
+  lng: t.data.lng,
+}));
+
+function formatDate(d: Date) {
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
+function stars(rating: number | undefined, max = 5) {
+  if (!rating) return '';
+  return '★'.repeat(rating) + '☆'.repeat(max - rating);
+}
+---
+
+<Base title="Take a Hike" description="Trail notes from Northern California — dots on a map, clicks to reports.">
+  <Map trails={pins} height="min(70vh, 640px)" />
+
+  <section class="index-list">
+    <header class="list-head">
+      <h2 class="list-title">The Reports</h2>
+      <span class="trail-count">{allTrails.length} {allTrails.length === 1 ? 'trail' : 'trails'}</span>
+    </header>
+
+    <ol class="trail-list">
+      {allTrails.map((trail) => {
+        const slug = trail.id.replace(/\.md$/, '');
+        return (
+          <li class="trail-row">
+            <a href={`/trails/${slug}`} class="trail-link">
+              <span class="trail-num" aria-hidden="true"></span>
+              <div class="trail-body">
+                <p class="trail-title">{trail.data.title}</p>
+                <p class="trail-summary">{trail.data.summary}</p>
+                <p class="trail-meta">
+                  <span>{trail.data.region}</span>
+                  <span class="meta-sep">·</span>
+                  <span>{formatDate(trail.data.date)}</span>
+                  {trail.data.distance_mi && (
+                    <>
+                      <span class="meta-sep">·</span>
+                      <span>{trail.data.distance_mi} mi</span>
+                    </>
+                  )}
+                  {trail.data.stars && (
+                    <>
+                      <span class="meta-sep">·</span>
+                      <span class="trail-stars" aria-label={`${trail.data.stars} of 5 stars`}>
+                        {stars(trail.data.stars)}
+                      </span>
+                    </>
+                  )}
+                </p>
+              </div>
+            </a>
+          </li>
+        );
+      })}
+    </ol>
+  </section>
+</Base>
+
+<style>
+  .index-list {
+    margin-top: 3rem;
+  }
+
+  .list-head {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 0;
+  }
+
+  .list-title {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-weight: 400;
+    font-size: 1.5rem;
+    color: var(--ink);
+    margin: 0;
+  }
+
+  .trail-count {
+    font-family: var(--font-ui);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .trail-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    counter-reset: trail;
+  }
+
+  .trail-row {
+    counter-increment: trail;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .trail-link {
+    display: flex;
+    gap: 1.25rem;
+    padding: 1.25rem 0.5rem;
+    text-decoration: none;
+    color: inherit;
+    align-items: flex-start;
+    transition: background-color 0.12s ease;
+  }
+
+  .trail-link:hover {
+    background-color: var(--paper-deep);
+  }
+
+  .trail-link:hover .trail-title {
+    color: var(--accent);
+  }
+
+  .trail-num {
+    font-family: var(--font-ui);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--ink-faint);
+    min-width: 2rem;
+    text-align: right;
+    padding-top: 0.2em;
+    flex-shrink: 0;
+  }
+
+  .trail-num::before {
+    content: counter(trail, decimal-leading-zero);
+  }
+
+  .trail-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .trail-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.2rem;
+    color: var(--ink);
+    margin: 0 0 0.3rem;
+    transition: color 0.12s ease;
+  }
+
+  .trail-summary {
+    font-family: var(--font-body);
+    font-size: 0.925rem;
+    color: var(--ink-soft);
+    margin: 0 0 0.5rem;
+    line-height: 1.55;
+  }
+
+  .trail-meta {
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--ink-faint);
+    letter-spacing: 0.03em;
+    margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    align-items: center;
+  }
+
+  .meta-sep {
+    color: var(--rule);
+  }
+
+  .trail-stars {
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+  }
+
+  /* Filled stars get accent color via CSS trick — first N chars are accent */
+  :global(.trail-stars) {
+    background: linear-gradient(90deg, var(--accent) 0%, var(--accent) 50%, var(--rule) 50%, var(--rule) 100%);
+    -webkit-background-clip: text;
+  }
+</style>

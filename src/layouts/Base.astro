@@ -1,0 +1,216 @@
+---
+interface Props {
+  title: string;
+  description?: string;
+}
+const { title, description } = Astro.props;
+const siteTitle = 'Take a Hike';
+const fullTitle = title === siteTitle ? siteTitle : `${title} — ${siteTitle}`;
+const metaDescription = description ?? 'Trail notes from Northern California.';
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{fullTitle}</title>
+  <meta name="description" content={metaDescription} />
+  <link rel="canonical" href={canonicalURL} />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content={fullTitle} />
+  <meta property="og:description" content={metaDescription} />
+  <meta property="og:url" content={canonicalURL} />
+  <meta property="og:site_name" content={siteTitle} />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content={fullTitle} />
+  <meta name="twitter:description" content={metaDescription} />
+
+  <meta name="theme-color" content="#f5efe4" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600;1,9..144,700&family=Inter:wght@400;500;600&display=swap"
+    rel="stylesheet"
+  />
+</head>
+<body>
+  <header class="site-header">
+    <a href="/" class="wordmark" aria-label="Take a Hike — home">
+      Take&nbsp;<em>a</em>&nbsp;Hike
+    </a>
+    <p class="tagline">Trail notes from Northern California</p>
+  </header>
+
+  <main>
+    <slot />
+  </main>
+
+  <footer class="site-footer">
+    <a href="/">← All trails</a>
+  </footer>
+</body>
+</html>
+
+<style is:global>
+  :root {
+    --paper:       #f5efe4;
+    --paper-deep:  #ece3d0;
+    --ink:         #1f1b16;
+    --ink-soft:    #4a4238;
+    --ink-faint:   #8a7f70;
+    --rule:        #d8cdb6;
+    --accent:      #b9441f;
+    --accent-deep: #8f3214;
+    --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+    --font-body:    "Fraunces", "Iowan Old Style", Georgia, serif;
+    --font-ui:      "Inter", system-ui, sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html {
+    font-size: 16px;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.4;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.12 0 0 0 0 0.11 0 0 0 0 0.09 0 0 0 0.4 0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-size: 300px 300px;
+    background-repeat: repeat;
+  }
+
+  a {
+    color: inherit;
+    text-decoration-color: var(--rule);
+  }
+  a:hover {
+    color: var(--accent);
+    text-decoration-color: var(--accent);
+  }
+
+  /* Prose */
+  .prose {
+    font-family: var(--font-body);
+    font-size: 1.125rem;
+    line-height: 1.7;
+    color: var(--ink-soft);
+  }
+
+  .prose > p:first-child {
+    font-size: 1.2rem;
+    color: var(--ink);
+    line-height: 1.65;
+  }
+
+  .prose > p:first-child::first-letter {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 3.2em;
+    line-height: 0.8;
+    float: left;
+    margin-right: 0.08em;
+    margin-top: 0.05em;
+    color: var(--accent);
+  }
+
+  .prose em {
+    color: var(--ink-faint);
+  }
+
+  .prose h2 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.35rem;
+    color: var(--ink);
+    margin: 2rem 0 0.5rem;
+  }
+
+  .prose img {
+    max-width: 100%;
+    border: 1px solid var(--rule);
+    display: block;
+  }
+
+  .prose p {
+    margin: 0 0 1.25em;
+  }
+</style>
+
+<style>
+  .site-header {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 1.5rem;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .wordmark em {
+    font-style: italic;
+    color: var(--accent);
+    margin: 0 0.18em;
+  }
+
+  .tagline {
+    margin: 0.25rem 0 0;
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  main {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+
+  .site-footer {
+    max-width: 780px;
+    margin: 4rem auto 0;
+    padding: 1.25rem 1.5rem 2rem;
+    border-top: 1px solid var(--rule);
+    font-family: var(--font-ui);
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+  }
+
+  .site-footer a {
+    color: var(--ink-faint);
+    text-decoration: none;
+  }
+  .site-footer a:hover {
+    color: var(--accent);
+  }
+</style>

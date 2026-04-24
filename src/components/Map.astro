@@ -1,0 +1,254 @@
+---
+interface Trail {
+  slug: string;
+  title: string;
+  summary: string;
+  lat: number;
+  lng: number;
+}
+
+interface Focus {
+  lat: number;
+  lng: number;
+}
+
+interface Props {
+  trails: Trail[];
+  focus?: Focus;
+  height?: string;
+  interactive?: boolean;
+}
+
+const {
+  trails,
+  focus,
+  height = '70vh',
+  interactive = true,
+} = Astro.props;
+
+const trailsJson = JSON.stringify(trails);
+const focusJson = focus ? JSON.stringify(focus) : '';
+---
+
+<div class="map-wrap" style={`height: ${height}`}>
+  <div
+    class="map-frame"
+    data-trails={trailsJson}
+    data-focus={focusJson}
+    data-interactive={interactive ? 'true' : 'false'}
+  ></div>
+  <div class="map-attribution">
+    Map tiles by <a href="https://stamen.com" target="_blank" rel="noopener">Stamen Design</a>,
+    hosted by <a href="https://stadiamaps.com" target="_blank" rel="noopener">Stadia Maps</a>.
+    Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.
+  </div>
+</div>
+
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+
+<script>
+  import maplibregl from 'maplibre-gl';
+
+  document.querySelectorAll<HTMLElement>('.map-frame').forEach(el => {
+    const trails = JSON.parse(el.dataset.trails ?? '[]');
+    const focusRaw = el.dataset.focus;
+    const focus = focusRaw ? JSON.parse(focusRaw) : null;
+    const interactive = el.dataset.interactive === 'true';
+
+    let center: [number, number] = [-122.3, 38.2];
+    let zoom = 7.2;
+
+    if (focus) {
+      center = [focus.lng, focus.lat];
+      zoom = 12;
+    }
+
+    const map = new maplibregl.Map({
+      container: el,
+      style: 'https://tiles.stadiamaps.com/styles/stamen_terrain.json',
+      center,
+      zoom,
+      attributionControl: false,
+    });
+
+    if (interactive) {
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    } else {
+      map.scrollZoom.disable();
+      map.boxZoom.disable();
+      map.dragRotate.disable();
+      map.dragPan.disable();
+      map.keyboard.disable();
+      map.doubleClickZoom.disable();
+      map.touchZoomRotate.disable();
+    }
+
+    map.on('load', () => {
+      if (!focus && trails.length > 1) {
+        const lngs = trails.map((t: { lng: number }) => t.lng);
+        const lats = trails.map((t: { lat: number }) => t.lat);
+        map.fitBounds(
+          [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+          { padding: 60, maxZoom: 10 }
+        );
+      }
+
+      trails.forEach((trail: { slug: string; title: string; summary: string; lat: number; lng: number }) => {
+        const markerEl = document.createElement('a');
+        markerEl.className = 'trail-pin';
+        markerEl.href = `/trails/${trail.slug}`;
+        const dot = document.createElement('span');
+        dot.className = 'trail-pin-dot';
+        markerEl.appendChild(dot);
+
+        const popup = new maplibregl.Popup({
+          closeButton: false,
+          closeOnClick: false,
+          offset: 16,
+          className: 'trail-popup',
+        });
+
+        markerEl.addEventListener('mouseenter', () => {
+          popup
+            .setLngLat([trail.lng, trail.lat])
+            .setHTML(`
+              <p class="popup-title">${trail.title}</p>
+              <p class="popup-summary">${trail.summary}</p>
+              <span class="popup-cta">Read the report →</span>
+            `)
+            .addTo(map);
+        });
+
+        markerEl.addEventListener('mouseleave', () => {
+          popup.remove();
+        });
+
+        new maplibregl.Marker({ element: markerEl })
+          .setLngLat([trail.lng, trail.lat])
+          .addTo(map);
+      });
+    });
+  });
+</script>
+
+<style is:global>
+  .trail-pin {
+    display: block;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform 0.15s ease;
+  }
+
+  .trail-pin:hover {
+    transform: scale(1.2);
+  }
+
+  .trail-pin-dot {
+    display: block;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow:
+      0 0 0 3px var(--paper),
+      0 2px 6px rgba(0,0,0,0.25);
+  }
+
+  .trail-popup .maplibregl-popup-content {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 0.85rem 1rem;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+    max-width: 220px;
+  }
+
+  .trail-popup .maplibregl-popup-tip {
+    border-top-color: var(--rule) !important;
+  }
+
+  .popup-title {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--ink);
+    margin: 0 0 0.35rem;
+  }
+
+  .popup-summary {
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    margin: 0 0 0.5rem;
+  }
+
+  .popup-cta {
+    font-family: var(--font-ui);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  /* Nav controls */
+  .maplibregl-ctrl-zoom-in,
+  .maplibregl-ctrl-zoom-out {
+    background-color: var(--paper) !important;
+    border-color: var(--rule) !important;
+    color: var(--ink-soft) !important;
+  }
+
+  .maplibregl-ctrl-zoom-in:hover,
+  .maplibregl-ctrl-zoom-out:hover {
+    background-color: var(--paper-deep) !important;
+  }
+
+  .maplibregl-ctrl-group {
+    border: 1px solid var(--rule) !important;
+    border-radius: 2px !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1) !important;
+    background: none !important;
+  }
+
+  .maplibregl-ctrl-group button + button {
+    border-top-color: var(--rule) !important;
+  }
+</style>
+
+<style>
+  .map-wrap {
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .map-frame {
+    width: 100%;
+    height: 100%;
+  }
+
+  .map-attribution {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    background: rgba(245, 239, 228, 0.85);
+    font-family: var(--font-ui);
+    font-size: 0.6rem;
+    color: var(--ink-faint);
+    padding: 2px 6px;
+    backdrop-filter: blur(2px);
+  }
+
+  .map-attribution a {
+    color: var(--ink-faint);
+    text-decoration: underline;
+    text-decoration-color: var(--rule);
+  }
+</style>
