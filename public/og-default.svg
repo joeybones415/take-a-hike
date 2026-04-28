@@ -34,7 +34,7 @@
   <text x="654" y="345" font-family="Georgia, 'Iowan Old Style', serif" font-size="72" font-weight="700" fill="#1f1b16" letter-spacing="-1">Hike</text>
 
   <!-- Tagline -->
-  <text x="600" y="405" font-family="'Inter', system-ui, sans-serif" font-size="18" font-weight="500" fill="#8a7f70" letter-spacing="4" text-anchor="middle" text-transform="uppercase">TRAIL NOTES FROM NORTHERN CALIFORNIA</text>
+  <text x="600" y="405" font-family="'Inter', system-ui, sans-serif" font-size="18" font-weight="500" fill="#8a7f70" letter-spacing="4" text-anchor="middle" text-transform="uppercase">A PERSONAL ATLAS OF PLACES WORTH GOING</text>
 
   <!-- Noise grain overlay -->
   <rect width="1200" height="630" filter="url(#noise)" opacity="0.3"/>

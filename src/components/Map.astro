@@ -5,6 +5,14 @@ interface Trail {
   summary: string;
   lat: number;
   lng: number;
+  gpx?: string;
+  distance_mi?: number;
+  duration?: string;
+  stars?: number;
+  parking_lat?: number;
+  parking_lng?: number;
+  difficulty?: 'easy' | 'moderate' | 'hard';
+  route_type?: 'out-and-back' | 'loop' | 'point-to-point';
 }
 
 interface Focus {
@@ -12,9 +20,15 @@ interface Focus {
   lng: number;
 }
 
+interface Parking {
+  lat: number;
+  lng: number;
+}
+
 interface Props {
   trails: Trail[];
   focus?: Focus;
+  parking?: Parking | null;
   height?: string;
   interactive?: boolean;
 }
@@ -22,12 +36,14 @@ interface Props {
 const {
   trails,
   focus,
+  parking = null,
   height = '70vh',
   interactive = true,
 } = Astro.props;
 
 const trailsJson = JSON.stringify(trails);
 const focusJson = focus ? JSON.stringify(focus) : '';
+const parkingJson = parking ? JSON.stringify(parking) : '';
 ---
 
 <div class="map-wrap" style={`height: ${height}`}>
@@ -36,11 +52,14 @@ const focusJson = focus ? JSON.stringify(focus) : '';
     data-trails={trailsJson}
     data-focus={focusJson}
     data-interactive={interactive ? 'true' : 'false'}
+    data-parking={parkingJson}
   ></div>
+  {interactive && <div class="map-hint" aria-hidden="true">Pan &amp; zoom to explore</div>}
   <div class="map-attribution">
-    Map tiles by <a href="https://stamen.com" target="_blank" rel="noopener">Stamen Design</a>,
-    hosted by <a href="https://stadiamaps.com" target="_blank" rel="noopener">Stadia Maps</a>.
-    Data © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors.
+    <button type="button" class="map-attribution-toggle" aria-label="Map attribution" aria-expanded="false">i</button>
+    <div class="map-attribution-panel" hidden>
+      Map tiles by <a href="https://stamen.com/" target="_blank" rel="noopener">Stamen Design</a>, hosted by <a href="https://stadiamaps.com/" target="_blank" rel="noopener">Stadia Maps</a>. Data © <a href="https://www.openstreetmap.org/about" target="_blank" rel="noopener">OpenStreetMap</a> contributors.
+    </div>
   </div>
 </div>
 
@@ -49,11 +68,38 @@ const focusJson = focus ? JSON.stringify(focus) : '';
 <script>
   import maplibregl from 'maplibre-gl';
 
+  document.querySelectorAll('.map-attribution-toggle').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const panel = btn.nextElementSibling as HTMLElement;
+      const open = !panel.hidden;
+      panel.hidden = open;
+      btn.setAttribute('aria-expanded', String(!open));
+    });
+  });
+
   document.querySelectorAll<HTMLElement>('.map-frame').forEach(el => {
-    const trails = JSON.parse(el.dataset.trails ?? '[]');
+    const trails: Trail[] = JSON.parse(el.dataset.trails ?? '[]');
     const focusRaw = el.dataset.focus;
-    const focus = focusRaw ? JSON.parse(focusRaw) : null;
+    const focus: { lat: number; lng: number } | null = focusRaw ? JSON.parse(focusRaw) : null;
     const interactive = el.dataset.interactive === 'true';
+    const parkingRaw = el.dataset.parking;
+    const parking: { lat: number; lng: number } | null = parkingRaw ? JSON.parse(parkingRaw) : null;
+
+    interface Trail {
+      slug: string;
+      title: string;
+      summary: string;
+      lat: number;
+      lng: number;
+      gpx?: string;
+      distance_mi?: number;
+      duration?: string;
+      stars?: number;
+      parking_lat?: number;
+      parking_lng?: number;
+      difficulty?: 'easy' | 'moderate' | 'hard';
+      route_type?: 'out-and-back' | 'loop' | 'point-to-point';
+    }
 
     let center: [number, number] = [-122.3, 38.2];
     let zoom = 7.2;
@@ -69,10 +115,23 @@ const focusJson = focus ? JSON.stringify(focus) : '';
       center,
       zoom,
       attributionControl: false,
+      cooperativeGestures: interactive,
     });
 
     if (interactive) {
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+      // "Pan & zoom to explore" hint — fades out on first interaction
+      const hint = el.parentElement?.querySelector<HTMLElement>('.map-hint');
+      if (hint) {
+        const dismiss = () => {
+          hint.classList.add('map-hint-gone');
+          map.off('movestart', dismiss);
+          map.off('zoomstart', dismiss);
+        };
+        map.on('movestart', dismiss);
+        map.on('zoomstart', dismiss);
+      }
     } else {
       map.scrollZoom.disable();
       map.boxZoom.disable();
@@ -83,17 +142,72 @@ const focusJson = focus ? JSON.stringify(focus) : '';
       map.touchZoomRotate.disable();
     }
 
-    map.on('load', () => {
+    map.on('load', async () => {
+      // Homepage overview: fit to all pin frontmatter coords
       if (!focus && trails.length > 1) {
-        const lngs = trails.map((t: { lng: number }) => t.lng);
-        const lats = trails.map((t: { lat: number }) => t.lat);
+        const lngs = trails.map(t => t.lng);
+        const lats = trails.map(t => t.lat);
         map.fitBounds(
           [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
           { padding: 60, maxZoom: 10 }
         );
       }
 
-      trails.forEach((trail: { slug: string; title: string; summary: string; lat: number; lng: number }) => {
+      let showParkingPin = !!parking;
+
+      for (const trail of trails) {
+        let pinLng = trail.lng;
+        let pinLat = trail.lat;
+        let gpxLoaded = false;
+
+        // --- GPX: load track, resolve pin to first point ---
+        if (trail.gpx) {
+          try {
+            const res = await fetch(trail.gpx);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const text = await res.text();
+            const doc = new DOMParser().parseFromString(text, 'application/xml');
+            const pts = [...doc.querySelectorAll('trkpt')].map(
+              p => [parseFloat(p.getAttribute('lon')!), parseFloat(p.getAttribute('lat')!)] as [number, number]
+            );
+            if (pts.length === 0) throw new Error('No track points');
+
+            map.addSource(`track-${trail.slug}`, {
+              type: 'geojson',
+              data: { type: 'Feature', geometry: { type: 'LineString', coordinates: pts }, properties: {} },
+            });
+            map.addLayer({
+              id: `track-${trail.slug}`,
+              type: 'line',
+              source: `track-${trail.slug}`,
+              paint: { 'line-color': '#b9441f', 'line-width': 3, 'line-opacity': 0.85 },
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
+            });
+
+            pinLng = pts[0][0];
+            pinLat = pts[0][1];
+            gpxLoaded = true;
+
+            if (focus && trail.lat === focus.lat && trail.lng === focus.lng) {
+              const bounds = new maplibregl.LngLatBounds();
+              pts.forEach(pt => bounds.extend(pt));
+              map.fitBounds(bounds, { padding: 40, duration: 0 });
+            }
+          } catch (err) {
+            console.warn(`[map] GPX load failed for ${trail.slug}:`, err);
+          }
+        }
+
+        // Fallback: use parking coords if GPX didn't give us a position
+        if (!gpxLoaded && trail.parking_lat && trail.parking_lng) {
+          pinLng = trail.parking_lng;
+          pinLat = trail.parking_lat;
+        }
+
+        // GPX loaded → hollow parking pin is redundant
+        if (gpxLoaded) showParkingPin = false;
+
+        // --- Marker at resolved position ---
         const markerEl = document.createElement('a');
         markerEl.className = 'trail-pin';
         markerEl.href = `/trails/${trail.slug}`;
@@ -109,34 +223,62 @@ const focusJson = focus ? JSON.stringify(focus) : '';
         });
 
         markerEl.addEventListener('mouseenter', () => {
+          const statsRows: string[] = [];
+          if (trail.distance_mi) statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Distance</span><span class="stat-value">${trail.distance_mi} mi</span></div>`);
+          if (trail.duration) statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Duration</span><span class="stat-value">${trail.duration}</span></div>`);
+          if (trail.stars) {
+            const filled = '★'.repeat(trail.stars);
+            const empty = '☆'.repeat(5 - trail.stars);
+            statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Rating</span><span class="stat-value stars">${filled}${empty}</span></div>`);
+          }
+          if (trail.difficulty) {
+            const label = trail.difficulty.charAt(0).toUpperCase() + trail.difficulty.slice(1);
+            statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Difficulty</span><span class="stat-value difficulty-value"><span class="difficulty-dot difficulty-${trail.difficulty}"></span>${label}</span></div>`);
+          }
+          if (trail.route_type) {
+            const typeLabels: Record<string, string> = { 'out-and-back': 'Out & back', 'loop': 'Loop', 'point-to-point': 'Point to point' };
+            const typeIcons: Record<string, string> = {
+              'out-and-back': '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 L21 12"/><path d="M7 8 L3 12 L7 16"/><path d="M17 8 L21 12 L17 16"/></svg>',
+              'loop': '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5 A 7 7 0 1 1 5 10"/><path d="M5 7 L5 11 L9 11"/></svg>',
+              'point-to-point': '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 L20 12"/><path d="M15 7 L20 12 L15 17"/></svg>',
+            };
+            statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Type</span><span class="stat-value route-type-value">${typeIcons[trail.route_type]}${typeLabels[trail.route_type]}</span></div>`);
+          }
           popup
-            .setLngLat([trail.lng, trail.lat])
-            .setHTML(`
-              <p class="popup-title">${trail.title}</p>
-              <p class="popup-summary">${trail.summary}</p>
-              <span class="popup-cta">Open trail →</span>
-            `)
+            .setLngLat([pinLng, pinLat])
+            .setHTML(`<div class="trail-popup-inner">
+              <div class="trail-popup-title">${trail.title}</div>
+              <div class="trail-popup-summary">${trail.summary}</div>
+              ${statsRows.length ? `<div class="trail-popup-stats">${statsRows.join('')}</div>` : ''}
+              <div class="trail-popup-cta">Open trail →</div>
+            </div>`)
             .addTo(map);
         });
 
-        markerEl.addEventListener('mouseleave', () => {
-          popup.remove();
-        });
+        markerEl.addEventListener('mouseleave', () => popup.remove());
 
         new maplibregl.Marker({ element: markerEl })
-          .setLngLat([trail.lng, trail.lat])
+          .setLngLat([pinLng, pinLat])
           .addTo(map);
-      });
+      }
+
+      // Hollow parking pin — only when no GPX track was loaded
+      if (showParkingPin && parking) {
+        const parkingEl = document.createElement('div');
+        parkingEl.className = 'parking-pin';
+        new maplibregl.Marker({ element: parkingEl })
+          .setLngLat([parking.lng, parking.lat])
+          .addTo(map);
+      }
     });
   });
 </script>
 
 <style is:global>
   .trail-pin {
-    display: block;
+    display: flex;
     width: 24px;
     height: 24px;
-    display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
@@ -159,42 +301,112 @@ const focusJson = focus ? JSON.stringify(focus) : '';
       0 2px 6px rgba(0,0,0,0.25);
   }
 
+  .parking-pin {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--paper);
+    border: 1.5px solid var(--ink-soft);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+
   .trail-popup .maplibregl-popup-content {
     background: var(--paper);
     border: 1px solid var(--rule);
     border-radius: 2px;
     padding: 0.85rem 1rem;
     box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-    max-width: 220px;
+    max-width: 260px;
   }
 
   .trail-popup .maplibregl-popup-tip {
     border-top-color: var(--rule) !important;
   }
 
-  .popup-title {
+  .trail-popup-inner { display: flex; flex-direction: column; gap: 0; }
+
+  .trail-popup-title {
     font-family: var(--font-display);
     font-weight: 600;
     font-size: 1rem;
     color: var(--ink);
-    margin: 0 0 0.35rem;
+    margin: 0 0 0.3rem;
   }
 
-  .popup-summary {
+  .trail-popup-summary {
     font-family: var(--font-body);
     font-size: 0.8rem;
     color: var(--ink-soft);
     line-height: 1.5;
-    margin: 0 0 0.5rem;
+    margin: 0;
   }
 
-  .popup-cta {
+  .trail-popup-stats {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .trail-popup-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    font-family: var(--font-ui);
+    font-size: 0.72rem;
+  }
+
+  .trail-popup-stat .stat-label {
+    color: var(--ink-faint);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 500;
+  }
+
+  .trail-popup-stat .stat-value {
+    color: var(--ink);
+    font-weight: 500;
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+  }
+
+  .trail-popup-stat .stars {
+    color: var(--accent);
+    letter-spacing: 0.03em;
+  }
+
+  .trail-popup-stat .difficulty-value,
+  .trail-popup-stat .route-type-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
+  .trail-popup-stat .difficulty-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .trail-popup-stat .difficulty-easy     { background: #5ba65a; }
+  .trail-popup-stat .difficulty-moderate { background: #d4a64a; }
+  .trail-popup-stat .difficulty-hard     { background: #c24a3a; }
+  .trail-popup-stat .route-type-value svg {
+    color: var(--ink-soft);
+    flex-shrink: 0;
+  }
+
+  .trail-popup-cta {
     font-family: var(--font-ui);
     font-size: 0.65rem;
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
     color: var(--accent);
+    margin-top: 8px;
   }
 
   /* Nav controls */
@@ -234,21 +446,85 @@ const focusJson = focus ? JSON.stringify(focus) : '';
     height: 100%;
   }
 
-  .map-attribution {
+  .map-hint {
     position: absolute;
-    bottom: 0;
-    right: 0;
-    background: rgba(245, 239, 228, 0.85);
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
     font-family: var(--font-ui);
-    font-size: 0.6rem;
-    color: var(--ink-faint);
-    padding: 2px 6px;
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    background: rgba(245, 239, 228, 0.88);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 4px 10px;
+    pointer-events: none;
     backdrop-filter: blur(2px);
+    transition: opacity 0.4s ease;
+    white-space: nowrap;
   }
 
-  .map-attribution a {
-    color: var(--ink-faint);
+  .map-hint-gone {
+    opacity: 0;
+  }
+
+  .map-attribution {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    z-index: 2;
+    font-family: var(--font-ui);
+  }
+
+  .map-attribution-toggle {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1px solid var(--rule);
+    background: rgba(245, 239, 228, 0.92);
+    color: var(--ink-soft);
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    backdrop-filter: blur(2px);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+    transition: background 0.15s ease;
+  }
+
+  .map-attribution-toggle:hover {
+    background: var(--paper);
+  }
+
+  .map-attribution-panel {
+    position: absolute;
+    bottom: 28px;
+    right: 0;
+    background: rgba(245, 239, 228, 0.95);
+    border: 1px solid var(--rule);
+    padding: 8px 10px;
+    font-size: 10px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    width: max-content;
+    max-width: min(80vw, 340px);
+    text-align: right;
+    border-radius: 2px;
+    backdrop-filter: blur(3px);
+    box-shadow: 0 4px 14px rgba(31, 27, 22, 0.15);
+  }
+
+  .map-attribution-panel a {
+    color: var(--ink-soft);
     text-decoration: underline;
-    text-decoration-color: var(--rule);
+    text-decoration-thickness: 0.5px;
   }
 </style>

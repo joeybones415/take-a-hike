@@ -12,19 +12,17 @@ const pins = allTrails.map(t => ({
   summary: t.data.summary,
   lat: t.data.lat,
   lng: t.data.lng,
+  gpx: t.data.gpx,
+  distance_mi: t.data.distance_mi,
+  duration: t.data.duration,
+  stars: t.data.stars,
+  difficulty: t.data.difficulty,
+  route_type: t.data.route_type,
 }));
 
-function formatDate(d: Date) {
-  return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-}
-
-function stars(rating: number | undefined, max = 5) {
-  if (!rating) return '';
-  return '★'.repeat(rating) + '☆'.repeat(max - rating);
-}
 ---
 
-<Base title="Take a Hike" description="Trail notes from Northern California — dots on a map, clicks to reports.">
+<Base title="Take a Hike" description="A personal atlas of places worth going.">
   <Map trails={pins} height="min(70vh, 640px)" />
 
   <p class="atlas-intro">
@@ -47,31 +45,71 @@ function stars(rating: number | undefined, max = 5) {
               <div class="trail-body">
                 <p class="trail-title">{trail.data.title}</p>
                 <p class="trail-summary">{trail.data.summary}</p>
-                <p class="trail-meta">
-                  <span>{trail.data.region}</span>
-                  <span class="meta-sep">·</span>
-                  <span>{formatDate(trail.data.date)}</span>
-                  {trail.data.distance_mi && (
-                    <>
-                      <span class="meta-sep">·</span>
-                      <span>{trail.data.distance_mi} mi</span>
-                    </>
+                <div class="trail-row-meta">
+                  <span class="region">{trail.data.region}</span>
+
+                  {(trail.data.distance_mi || trail.data.duration) && (
+                    <span class="meta-divider" aria-hidden="true"></span>
                   )}
-                  {trail.data.stars && (
-                    <>
-                      <span class="meta-sep">·</span>
-                      <span class="trail-stars" aria-label={`${trail.data.stars} of 5 stars`}>
-                        {stars(trail.data.stars)}
-                      </span>
-                    </>
+
+                  {(trail.data.distance_mi || trail.data.duration) && (
+                    <span class="meta-group">
+                      {trail.data.distance_mi && <span>{trail.data.distance_mi} mi</span>}
+                      {trail.data.distance_mi && trail.data.duration && <span class="dot-sep">·</span>}
+                      {trail.data.duration && <span>{trail.data.duration}</span>}
+                    </span>
                   )}
-                  {trail.data.substack_url && (
-                    <>
-                      <span class="meta-sep">·</span>
-                      <span class="substack-badge">Read on Substack ↗</span>
-                    </>
+
+                  {(trail.data.stars || trail.data.difficulty || trail.data.route_type) && (
+                    <span class="meta-divider" aria-hidden="true"></span>
                   )}
-                </p>
+
+                  {(trail.data.stars || trail.data.difficulty || trail.data.route_type) && (
+                    <span class="meta-group">
+                      {trail.data.stars && (
+                        <span class="stars" aria-label={`${trail.data.stars} out of 5`}>
+                          {'★'.repeat(trail.data.stars)}<span class="stars-empty">{'★'.repeat(5 - trail.data.stars)}</span>
+                        </span>
+                      )}
+                      {trail.data.stars && (trail.data.difficulty || trail.data.route_type) && <span class="dot-sep">·</span>}
+                      {trail.data.difficulty && (
+                        <span class="difficulty-inline">
+                          <span class={`difficulty-dot difficulty-${trail.data.difficulty}`} aria-hidden="true"></span>
+                          {trail.data.difficulty.charAt(0).toUpperCase() + trail.data.difficulty.slice(1)}
+                        </span>
+                      )}
+                      {trail.data.difficulty && trail.data.route_type && <span class="dot-sep">·</span>}
+                      {trail.data.route_type && (
+                        <span class="route-type-inline">
+                          {trail.data.route_type === 'out-and-back' && (
+                            <>
+                              <svg class="route-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M3 12 L21 12"/><path d="M7 8 L3 12 L7 16"/><path d="M17 8 L21 12 L17 16"/>
+                              </svg>
+                              Out &amp; back
+                            </>
+                          )}
+                          {trail.data.route_type === 'loop' && (
+                            <>
+                              <svg class="route-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M8 5 A 7 7 0 1 1 5 10"/><path d="M5 7 L5 11 L9 11"/>
+                              </svg>
+                              Loop
+                            </>
+                          )}
+                          {trail.data.route_type === 'point-to-point' && (
+                            <>
+                              <svg class="route-icon" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M3 12 L20 12"/><path d="M15 7 L20 12 L15 17"/>
+                              </svg>
+                              Point to point
+                            </>
+                          )}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </div>
               </div>
             </a>
           </li>
@@ -180,40 +218,73 @@ function stars(rating: number | undefined, max = 5) {
     line-height: 1.55;
   }
 
-  .trail-meta {
+  .trail-row-meta {
+    margin-top: 0.5rem;
     font-family: var(--font-ui);
-    font-size: 0.7rem;
-    font-weight: 500;
+    font-size: 0.78rem;
     color: var(--ink-faint);
-    letter-spacing: 0.03em;
-    margin: 0;
     display: flex;
     flex-wrap: wrap;
-    gap: 0.25rem;
     align-items: center;
+    gap: 0.5rem 0.75rem;
   }
 
-  .meta-sep {
+  .meta-group {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+  }
+
+  .meta-divider {
+    display: inline-block;
+    width: 1px;
+    height: 14px;
+    background: var(--rule);
+    flex-shrink: 0;
+  }
+
+  .dot-sep {
+    opacity: 0.6;
+  }
+
+  .region {
+    color: var(--ink-soft);
+    font-weight: 500;
+  }
+
+  .stars {
+    color: var(--accent);
+    letter-spacing: 0.03em;
+  }
+  .stars-empty {
     color: var(--rule);
   }
 
-  .trail-stars {
-    letter-spacing: 0.05em;
-    color: var(--ink-faint);
+  .difficulty-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
   }
-
-  :global(.trail-stars) {
-    background: linear-gradient(90deg, var(--accent) 0%, var(--accent) 50%, var(--rule) 50%, var(--rule) 100%);
-    -webkit-background-clip: text;
+  .difficulty-inline .difficulty-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
   }
+  .difficulty-inline .difficulty-easy     { background: #5ba65a; }
+  .difficulty-inline .difficulty-moderate { background: #d4a64a; }
+  .difficulty-inline .difficulty-hard     { background: #c24a3a; }
 
-  .substack-badge {
-    font-family: var(--font-ui);
-    font-size: 0.62rem;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--accent);
+  .route-type-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .route-type-inline .route-icon {
+    color: var(--ink-soft);
+    flex-shrink: 0;
   }
 
   .atlas-intro {

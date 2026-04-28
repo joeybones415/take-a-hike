@@ -9,6 +9,12 @@ elevation_ft: 800
 stars: 4
 summary: A short, stepped cascade on the quiet west side of Tam — best in the weeks after a storm.
 substack_url: "https://example.substack.com/p/carson-falls"
+duration: "2 hours"
+difficulty: moderate
+route_type: out-and-back
+parking_lat: 37.96369
+parking_lng: -122.62507
+gpx: "/tracks/carson-falls.gpx"
 ---
 
 *Rewrite me before you deploy.*

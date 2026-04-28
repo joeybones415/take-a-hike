@@ -1,5 +1,5 @@
 ---
-import { getCollection } from 'astro:content';
+import { getCollection, render } from 'astro:content';
 import Base from '../../layouts/Base.astro';
 import Map from '../../components/Map.astro';
 
@@ -20,9 +20,21 @@ const pin = [{
   summary: trail.data.summary,
   lat: trail.data.lat,
   lng: trail.data.lng,
+  gpx: trail.data.gpx,
+  distance_mi: trail.data.distance_mi,
+  duration: trail.data.duration,
+  stars: trail.data.stars,
+  parking_lat: trail.data.parking_lat,
+  parking_lng: trail.data.parking_lng,
+  difficulty: trail.data.difficulty,
+  route_type: trail.data.route_type,
 }];
 
 const focus = { lat: trail.data.lat, lng: trail.data.lng };
+
+const parking = (trail.data.parking_lat != null && trail.data.parking_lng != null)
+  ? { lat: trail.data.parking_lat, lng: trail.data.parking_lng }
+  : null;
 
 function formatDate(d: Date) {
   return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
@@ -35,6 +47,8 @@ function formatNumber(n: number) {
 function starHTML(rating: number, max = 5) {
   return '★'.repeat(rating) + '☆'.repeat(max - rating);
 }
+
+const { Content } = await render(trail);
 ---
 
 <Base
@@ -44,28 +58,30 @@ function starHTML(rating: number, max = 5) {
   ogImage={trail.data.hero_image}
 >
   <div class="trail-hero">
-    <Map trails={pin} focus={focus} height="55vh" interactive={false} />
+    <Map trails={pin} focus={focus} parking={parking} height="clamp(320px, 55vh, 560px)" interactive={true} />
   </div>
 
   <div class="card">
-    <p class="eyebrow">
-      <a href="/">Take a Hike</a>
-      <span class="eyebrow-sep">·</span>
-      {trail.data.region}
-    </p>
+    <div class="eyebrow">
+      <span class="eyebrow-region">{trail.data.region}</span>
+      <span class="meta-divider" aria-hidden="true"></span>
+      <span class="eyebrow-hiked">Hiked on <span class="eyebrow-date">{formatDate(trail.data.date)}</span></span>
+    </div>
 
     <h1 class="trail-title">{trail.data.title}</h1>
     <p class="trail-lede">{trail.data.summary}</p>
 
     <dl class="facts">
-      <div class="fact">
-        <dt>Hiked</dt>
-        <dd>{formatDate(trail.data.date)}</dd>
-      </div>
       {trail.data.distance_mi && (
         <div class="fact">
           <dt>Distance</dt>
           <dd>{trail.data.distance_mi} mi</dd>
+        </div>
+      )}
+      {trail.data.duration && (
+        <div class="fact">
+          <dt>Duration</dt>
+          <dd>{trail.data.duration}</dd>
         </div>
       )}
       {trail.data.elevation_ft && (
@@ -74,27 +90,101 @@ function starHTML(rating: number, max = 5) {
           <dd>{formatNumber(trail.data.elevation_ft)} ft</dd>
         </div>
       )}
+      <span class="facts-divider" aria-hidden="true"></span>
+
       {trail.data.stars && (
         <div class="fact">
           <dt>Rating</dt>
           <dd class="fact-stars" aria-label={`${trail.data.stars} of 5 stars`}>
-            {starHTML(trail.data.stars)}
+            <span class="stars-filled">{'★'.repeat(trail.data.stars)}</span><span class="stars-empty">{'★'.repeat(5 - trail.data.stars)}</span>
+          </dd>
+        </div>
+      )}
+      {trail.data.difficulty && (
+        <div class="fact">
+          <dt>Difficulty</dt>
+          <dd class="difficulty">
+            <span class={`difficulty-dot difficulty-${trail.data.difficulty}`} aria-hidden="true"></span>
+            {trail.data.difficulty === 'easy' && 'Easy'}
+            {trail.data.difficulty === 'moderate' && 'Moderate'}
+            {trail.data.difficulty === 'hard' && 'Hard'}
+          </dd>
+        </div>
+      )}
+      {trail.data.route_type && (
+        <div class="fact">
+          <dt>Type</dt>
+          <dd class="route-type">
+            {trail.data.route_type === 'out-and-back' && (
+              <>
+                <svg class="route-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12 L21 12" />
+                  <path d="M7 8 L3 12 L7 16" />
+                  <path d="M17 8 L21 12 L17 16" />
+                </svg>
+                Out &amp; back
+              </>
+            )}
+            {trail.data.route_type === 'loop' && (
+              <>
+                <svg class="route-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M8 5 A 7 7 0 1 1 5 10" />
+                  <path d="M5 7 L5 11 L9 11" />
+                </svg>
+                Loop
+              </>
+            )}
+            {trail.data.route_type === 'point-to-point' && (
+              <>
+                <svg class="route-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 12 L20 12" />
+                  <path d="M15 7 L20 12 L15 17" />
+                </svg>
+                Point to point
+              </>
+            )}
           </dd>
         </div>
       )}
     </dl>
 
-    {trail.data.substack_url ? (
-      <a
-        href={trail.data.substack_url}
-        target="_blank"
-        rel="noopener noreferrer"
-        class="cta-button"
-      >
-        Read the full report on Substack →
-      </a>
-    ) : (
-      <p class="cta-coming-soon">Report coming soon.</p>
+    <div class="prose">
+      <Content />
+    </div>
+
+    <div class="trail-actions">
+      {(trail.data.parking_lat && trail.data.parking_lng) && (
+        <a
+          class="action-btn action-btn-secondary"
+          href={`https://www.google.com/maps/dir/?api=1&destination=${trail.data.parking_lat},${trail.data.parking_lng}`}
+          target="_blank"
+          rel="noopener"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <rect x="3" y="3" width="18" height="18" rx="3" fill="currentColor"/>
+            <text x="12" y="17" text-anchor="middle" font-family="var(--font-display)" font-weight="700" font-size="14" fill="var(--paper)">P</text>
+          </svg>
+          <span>Directions to parking</span>
+        </a>
+      )}
+      {trail.data.gpx && (
+        <a class="action-btn action-btn-secondary" href={trail.data.gpx} download>
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 4 L12 15"/>
+            <path d="M7 10 L12 15 L17 10"/>
+            <path d="M5 18 L5 19 A2 2 0 0 0 7 21 L17 21 A2 2 0 0 0 19 19 L19 18"/>
+          </svg>
+          <span>Download GPX</span>
+        </a>
+      )}
+      {trail.data.substack_url && (
+        <a class="action-btn action-btn-primary" href={trail.data.substack_url} target="_blank" rel="noopener">
+          Read on Substack →
+        </a>
+      )}
+    </div>
+    {trail.data.substack_url && (
+      <p class="substack-cta-note">Photos and comments live on Substack.</p>
     )}
 
     <p class="back-link"><a href="/">← All trails</a></p>
@@ -113,26 +203,30 @@ function starHTML(rating: number, max = 5) {
   }
 
   .eyebrow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
     font-family: var(--font-ui);
-    font-size: 0.68rem;
-    font-weight: 600;
-    letter-spacing: 0.12em;
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
     text-transform: uppercase;
     color: var(--ink-faint);
-    margin: 0 0 1.25rem;
-    display: flex;
-    gap: 0.4rem;
-    align-items: center;
-    flex-wrap: wrap;
+    margin: 0 0 1rem;
   }
 
-  .eyebrow a {
-    color: var(--ink-faint);
-    text-decoration: none;
-  }
-  .eyebrow a:hover { color: var(--accent); }
+  .eyebrow-region { color: var(--ink-faint); }
+  .eyebrow-hiked  { color: var(--ink-faint); white-space: nowrap; }
+  .eyebrow-date   { color: var(--accent); }
 
-  .eyebrow-sep { color: var(--rule); }
+  .eyebrow .meta-divider {
+    display: inline-block;
+    width: 1px;
+    height: 11px;
+    background: var(--rule);
+    flex-shrink: 0;
+  }
 
   .trail-title {
     font-family: var(--font-display);
@@ -155,8 +249,8 @@ function starHTML(rating: number, max = 5) {
 
   .facts {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0 2rem;
+    flex-wrap: nowrap;
+    gap: 1.2rem 1.2rem;
     margin: 0 0 2.25rem;
     padding: 0.85rem 0;
     border-top: 1px solid var(--rule);
@@ -183,39 +277,107 @@ function starHTML(rating: number, max = 5) {
   }
 
   .fact-stars {
-    color: var(--ink-faint);
     letter-spacing: 0.08em;
   }
+  .stars-filled { color: var(--accent); }
+  .stars-empty  { color: var(--rule); }
 
-  .cta-button {
+  .facts dd {
+    display: flex;
+    align-items: center;
+    min-height: 24px;
+  }
+
+  .difficulty {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .difficulty-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
     display: inline-block;
-    background: var(--accent);
-    color: #fff;
+    flex-shrink: 0;
+  }
+  .difficulty-easy     { background: #5ba65a; }
+  .difficulty-moderate { background: #d4a64a; }
+  .difficulty-hard     { background: #c24a3a; }
+
+  .facts-divider {
+    display: inline-block;
+    width: 1px;
+    height: 36px;
+    background: var(--rule);
+    align-self: center;
+    flex-shrink: 0;
+  }
+
+  .route-type {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .route-icon {
+    color: var(--ink-soft);
+    flex-shrink: 0;
+  }
+
+  .trail-actions {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
     font-family: var(--font-ui);
-    font-size: 0.72rem;
+    font-size: 0.78rem;
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    text-decoration: none;
-    padding: 0.85rem 1.75rem;
+    padding: 0.85rem 1.3rem;
     border-radius: 2px;
-    margin-bottom: 2rem;
-    transition: background-color 0.15s ease, transform 0.12s ease, box-shadow 0.12s ease;
-    box-shadow: 0 2px 8px rgba(185, 68, 31, 0.25);
+    text-decoration: none;
+    transition: background 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
   }
-
-  .cta-button:hover {
-    background: var(--accent-deep);
+  .action-btn:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 14px rgba(185, 68, 31, 0.35);
-    color: #fff;
+    text-decoration: none;
+  }
+  .action-btn-primary {
+    background: var(--accent);
+    color: var(--paper);
+  }
+  .action-btn-primary:hover {
+    background: var(--accent-deep);
+    color: var(--paper);
+  }
+  .action-btn-secondary {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--rule);
+  }
+  .action-btn-secondary:hover {
+    border-color: var(--ink-soft);
+    background: var(--paper-deep);
+    color: var(--ink);
   }
 
-  .cta-coming-soon {
+  .substack-cta-note {
+    margin: 0.9rem 0 0;
     font-family: var(--font-ui);
-    font-size: 0.8rem;
+    font-size: 0.72rem;
     color: var(--ink-faint);
-    margin: 0 0 2rem;
+    letter-spacing: 0.04em;
+    text-align: center;
   }
 
   .back-link {

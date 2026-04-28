@@ -15,6 +15,21 @@ const trails = defineCollection({
     summary: z.string(),
     substack_url: z.string().url(),
     hero_image: z.string().url().optional(),
+    parking_lat: z.number().optional(),
+    parking_lng: z.number().optional(),
+    gpx: z.string().optional(),
+    duration: z.string().optional(),
+    difficulty: z.enum(['easy', 'moderate', 'hard']).optional(),
+    route_type: z.enum(['out-and-back', 'loop', 'point-to-point']).optional(),
+  }).superRefine((data, ctx) => {
+    const hasLat = data.parking_lat !== undefined;
+    const hasLng = data.parking_lng !== undefined;
+    if (hasLat && !hasLng) {
+      ctx.addIssue({ code: 'custom', message: 'parking_lng is required when parking_lat is set', path: ['parking_lng'] });
+    }
+    if (hasLng && !hasLat) {
+      ctx.addIssue({ code: 'custom', message: 'parking_lat is required when parking_lng is set', path: ['parking_lat'] });
+    }
   }),
 });
 
