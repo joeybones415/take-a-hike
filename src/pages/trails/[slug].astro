@@ -13,6 +13,7 @@ export async function getStaticPaths() {
 
 const { trail } = Astro.props;
 const slug = trail.id.replace(/\.md$/, '');
+const isPlanned = trail.data.status === 'planned';
 
 const pin = [{
   slug,
@@ -20,6 +21,7 @@ const pin = [{
   summary: trail.data.summary,
   lat: trail.data.lat,
   lng: trail.data.lng,
+  status: trail.data.status ?? 'hiked',
   gpx: trail.data.gpx,
   distance_mi: trail.data.distance_mi,
   duration: trail.data.duration,
@@ -65,7 +67,11 @@ const { Content } = await render(trail);
     <div class="eyebrow">
       <span class="eyebrow-region">{trail.data.region}</span>
       <span class="meta-divider" aria-hidden="true"></span>
-      <span class="eyebrow-hiked">Hiked on <span class="eyebrow-date">{formatDate(trail.data.date)}</span></span>
+      {isPlanned ? (
+        <span class="eyebrow-planned">◌ Planned</span>
+      ) : (
+        <span class="eyebrow-hiked">Hiked on <span class="eyebrow-date">{trail.data.date ? formatDate(trail.data.date) : ''}</span></span>
+      )}
     </div>
 
     <h1 class="trail-title">{trail.data.title}</h1>
@@ -153,38 +159,56 @@ const { Content } = await render(trail);
     </div>
 
     <div class="trail-actions">
-      {(trail.data.parking_lat && trail.data.parking_lng) && (
-        <a
-          class="action-btn action-btn-secondary"
-          href={`https://www.google.com/maps/dir/?api=1&destination=${trail.data.parking_lat},${trail.data.parking_lng}`}
-          target="_blank"
-          rel="noopener"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-            <rect x="3" y="3" width="18" height="18" rx="3" fill="currentColor"/>
-            <text x="12" y="17" text-anchor="middle" font-family="var(--font-display)" font-weight="700" font-size="14" fill="var(--paper)">P</text>
-          </svg>
-          <span>Directions to parking</span>
-        </a>
-      )}
-      {trail.data.gpx && (
-        <a class="action-btn action-btn-secondary" href={trail.data.gpx} download>
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 4 L12 15"/>
-            <path d="M7 10 L12 15 L17 10"/>
-            <path d="M5 18 L5 19 A2 2 0 0 0 7 21 L17 21 A2 2 0 0 0 19 19 L19 18"/>
-          </svg>
-          <span>Download GPX</span>
-        </a>
-      )}
-      {trail.data.substack_url && (
-        <a class="action-btn action-btn-primary" href={trail.data.substack_url} target="_blank" rel="noopener">
-          Read on Substack →
-        </a>
+      {isPlanned ? (
+        <>
+          <a class="action-btn action-btn-secondary" href={`/plan?edit=${slug}`}>
+            Edit plan
+          </a>
+          <button type="button" class="action-btn action-btn-primary" id="mark-hiked-trigger">
+            ✓ I hiked this →
+          </button>
+        </>
+      ) : (
+        <>
+          {(trail.data.parking_lat && trail.data.parking_lng) && (
+            <a
+              class="action-btn action-btn-secondary"
+              href={`https://www.google.com/maps/dir/?api=1&destination=${trail.data.parking_lat},${trail.data.parking_lng}`}
+              target="_blank"
+              rel="noopener"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="3" fill="currentColor"/>
+                <text x="12" y="17" text-anchor="middle" font-family="var(--font-display)" font-weight="700" font-size="14" fill="var(--paper)">P</text>
+              </svg>
+              <span>Directions to parking</span>
+            </a>
+          )}
+          {trail.data.gpx && (
+            <a class="action-btn action-btn-secondary" href={trail.data.gpx} download>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 4 L12 15"/>
+                <path d="M7 10 L12 15 L17 10"/>
+                <path d="M5 18 L5 19 A2 2 0 0 0 7 21 L17 21 A2 2 0 0 0 19 19 L19 18"/>
+              </svg>
+              <span>Download GPX</span>
+            </a>
+          )}
+          {trail.data.substack_url && (
+            <a class="action-btn action-btn-primary" href={trail.data.substack_url} target="_blank" rel="noopener">
+              Read on Substack →
+            </a>
+          )}
+        </>
       )}
     </div>
-    {trail.data.substack_url && (
+    {!isPlanned && trail.data.substack_url && (
       <p class="substack-cta-note">Photos and comments live on Substack.</p>
+    )}
+    {isPlanned && (
+      <div class="planned-note" id="planned-note" hidden>
+        <p>Update this trail's frontmatter in your markdown file — set <code>status: hiked</code>, add a <code>date</code>, and fill in your report — to publish it as a full trail entry.</p>
+      </div>
     )}
 
     <p class="back-link"><a href="/">← All trails</a></p>
@@ -216,9 +240,10 @@ const { Content } = await render(trail);
     margin: 0 0 1rem;
   }
 
-  .eyebrow-region { color: var(--ink-faint); }
-  .eyebrow-hiked  { color: var(--ink-faint); white-space: nowrap; }
-  .eyebrow-date   { color: var(--accent); }
+  .eyebrow-region  { color: var(--ink-faint); }
+  .eyebrow-hiked   { color: var(--ink-faint); white-space: nowrap; }
+  .eyebrow-date    { color: var(--accent); }
+  .eyebrow-planned { color: #6c4aa8; font-weight: 700; white-space: nowrap; }
 
   .eyebrow .meta-divider {
     display: inline-block;
@@ -393,7 +418,40 @@ const { Content } = await render(trail);
   }
   .back-link a:hover { color: var(--accent); }
 
+  .planned-note {
+    margin: 1.25rem 0 0;
+    padding: 0.85rem 1rem;
+    background: rgba(108, 74, 168, 0.06);
+    border: 1px solid rgba(108, 74, 168, 0.25);
+    border-radius: 2px;
+    font-family: var(--font-ui);
+    font-size: 0.8rem;
+    color: #6c4aa8;
+    line-height: 1.5;
+  }
+  .planned-note p { margin: 0; }
+  .planned-note code {
+    font-family: monospace;
+    background: rgba(108, 74, 168, 0.1);
+    padding: 1px 4px;
+    border-radius: 2px;
+  }
+
   @media (max-width: 600px) {
     .trail-hero { margin: 0 -1.5rem; }
   }
 </style>
+
+{isPlanned && (
+  <script>
+    const btn = document.getElementById('mark-hiked-trigger');
+    const note = document.getElementById('planned-note');
+    if (btn && note) {
+      btn.addEventListener('click', () => {
+        note.hidden = false;
+        note.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        btn.setAttribute('disabled', '');
+      });
+    }
+  </script>
+)}

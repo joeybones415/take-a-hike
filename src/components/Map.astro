@@ -5,6 +5,7 @@ interface Trail {
   summary: string;
   lat: number;
   lng: number;
+  status?: 'hiked' | 'planned';
   gpx?: string;
   distance_mi?: number;
   duration?: string;
@@ -31,6 +32,7 @@ interface Props {
   parking?: Parking | null;
   height?: string;
   interactive?: boolean;
+  showFab?: boolean;
 }
 
 const {
@@ -39,6 +41,7 @@ const {
   parking = null,
   height = '70vh',
   interactive = true,
+  showFab = false,
 } = Astro.props;
 
 const trailsJson = JSON.stringify(trails);
@@ -53,8 +56,15 @@ const parkingJson = parking ? JSON.stringify(parking) : '';
     data-focus={focusJson}
     data-interactive={interactive ? 'true' : 'false'}
     data-parking={parkingJson}
+    data-show-fab={showFab ? 'true' : 'false'}
   ></div>
   {interactive && <div class="map-hint" aria-hidden="true">Pan &amp; zoom to explore</div>}
+  {showFab && (
+    <a href="/plan" class="map-fab" aria-label="Plan a hike">
+      <span class="map-fab-plus" aria-hidden="true">+</span>
+      Plan a hike
+    </a>
+  )}
   <div class="map-attribution">
     <button type="button" class="map-attribution-toggle" aria-label="Map attribution" aria-expanded="false">i</button>
     <div class="map-attribution-panel" hidden>
@@ -84,6 +94,7 @@ const parkingJson = parking ? JSON.stringify(parking) : '';
     const interactive = el.dataset.interactive === 'true';
     const parkingRaw = el.dataset.parking;
     const parking: { lat: number; lng: number } | null = parkingRaw ? JSON.parse(parkingRaw) : null;
+    const showFab = el.dataset.showFab === 'true';
 
     interface Trail {
       slug: string;
@@ -91,6 +102,7 @@ const parkingJson = parking ? JSON.stringify(parking) : '';
       summary: string;
       lat: number;
       lng: number;
+      status?: 'hiked' | 'planned';
       gpx?: string;
       distance_mi?: number;
       duration?: string;
@@ -99,6 +111,21 @@ const parkingJson = parking ? JSON.stringify(parking) : '';
       parking_lng?: number;
       difficulty?: 'easy' | 'moderate' | 'hard';
       route_type?: 'out-and-back' | 'loop' | 'point-to-point';
+    }
+
+    interface LsHike {
+      id: string;
+      status: 'planned' | 'hiked';
+      title: string;
+      lat: number;
+      lng: number;
+      notes?: string;
+      distance_mi?: number;
+      duration?: string;
+      elevation_ft?: number;
+      difficulty?: 'easy' | 'moderate' | 'hard';
+      route_type?: 'out-and-back' | 'loop' | 'point-to-point';
+      region?: string;
     }
 
     let center: [number, number] = [-122.3, 38.2];
@@ -121,7 +148,6 @@ const parkingJson = parking ? JSON.stringify(parking) : '';
     if (interactive) {
       map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
-      // "Pan & zoom to explore" hint — fades out on first interaction
       const hint = el.parentElement?.querySelector<HTMLElement>('.map-hint');
       if (hint) {
         const dismiss = () => {
@@ -142,8 +168,78 @@ const parkingJson = parking ? JSON.stringify(parking) : '';
       map.touchZoomRotate.disable();
     }
 
+    function buildPopupHTML(title: string, summary: string, statsRows: string[], ctaText: string, statusLabel?: string) {
+      const statusHTML = statusLabel
+        ? `<div class="trail-popup-status${statusLabel === '◌ Planned' ? ' trail-popup-status--planned' : ''}">${statusLabel}</div>`
+        : '';
+      return `<div class="trail-popup-inner">
+        ${statusHTML}
+        <div class="trail-popup-title">${title}</div>
+        <div class="trail-popup-summary">${summary}</div>
+        ${statsRows.length ? `<div class="trail-popup-stats">${statsRows.join('')}</div>` : ''}
+        <div class="trail-popup-cta">${ctaText}</div>
+      </div>`;
+    }
+
+    function addTrailMarker(
+      lng: number, lat: number, title: string, summary: string,
+      href: string, isPlanned: boolean,
+      distance_mi?: number, duration?: string, stars?: number,
+      difficulty?: string, route_type?: string
+    ) {
+      const markerEl = document.createElement('a');
+      markerEl.className = 'trail-pin';
+      markerEl.href = href;
+      const dot = document.createElement('span');
+      dot.className = 'trail-pin-dot' + (isPlanned ? ' trail-pin-dot--planned' : '');
+      markerEl.appendChild(dot);
+
+      const popup = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 16,
+        className: 'trail-popup',
+      });
+
+      markerEl.addEventListener('mouseenter', () => {
+        const statsRows: string[] = [];
+        if (distance_mi) statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Distance</span><span class="stat-value">${distance_mi} mi</span></div>`);
+        if (duration) statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Duration</span><span class="stat-value">${duration}</span></div>`);
+        if (stars && !isPlanned) {
+          const filled = '★'.repeat(stars);
+          const empty = '☆'.repeat(5 - stars);
+          statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Rating</span><span class="stat-value stars">${filled}${empty}</span></div>`);
+        }
+        if (difficulty) {
+          const label = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+          const prefix = isPlanned ? '~' : '';
+          statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Difficulty</span><span class="stat-value difficulty-value"><span class="difficulty-dot difficulty-${difficulty}"></span>${prefix}${label}</span></div>`);
+        }
+        if (route_type && !isPlanned) {
+          const typeLabels: Record<string, string> = { 'out-and-back': 'Out & back', 'loop': 'Loop', 'point-to-point': 'Point to point' };
+          const typeIcons: Record<string, string> = {
+            'out-and-back': '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 L21 12"/><path d="M7 8 L3 12 L7 16"/><path d="M17 8 L21 12 L17 16"/></svg>',
+            'loop': '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5 A 7 7 0 1 1 5 10"/><path d="M5 7 L5 11 L9 11"/></svg>',
+            'point-to-point': '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 L20 12"/><path d="M15 7 L20 12 L15 17"/></svg>',
+          };
+          statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Type</span><span class="stat-value route-type-value">${typeIcons[route_type]}${typeLabels[route_type]}</span></div>`);
+        }
+        const statusLabel = isPlanned ? '◌ Planned' : undefined;
+        const ctaText = isPlanned ? 'Open plan →' : 'Open trail →';
+        popup
+          .setLngLat([lng, lat])
+          .setHTML(buildPopupHTML(title, summary, statsRows, ctaText, statusLabel))
+          .addTo(map);
+      });
+
+      markerEl.addEventListener('mouseleave', () => popup.remove());
+
+      new maplibregl.Marker({ element: markerEl })
+        .setLngLat([lng, lat])
+        .addTo(map);
+    }
+
     map.on('load', async () => {
-      // Homepage overview: fit to all pin frontmatter coords
       if (!focus && trails.length > 1) {
         const lngs = trails.map(t => t.lng);
         const lats = trails.map(t => t.lat);
@@ -156,12 +252,12 @@ const parkingJson = parking ? JSON.stringify(parking) : '';
       let showParkingPin = !!parking;
 
       for (const trail of trails) {
+        const isPlanned = trail.status === 'planned';
         let pinLng = trail.lng;
         let pinLat = trail.lat;
         let gpxLoaded = false;
 
-        // --- GPX: load track, resolve pin to first point ---
-        if (trail.gpx) {
+        if (trail.gpx && !isPlanned) {
           try {
             const res = await fetch(trail.gpx);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -198,77 +294,41 @@ const parkingJson = parking ? JSON.stringify(parking) : '';
           }
         }
 
-        // Fallback: use parking coords if GPX didn't give us a position
         if (!gpxLoaded && trail.parking_lat && trail.parking_lng) {
           pinLng = trail.parking_lng;
           pinLat = trail.parking_lat;
         }
 
-        // GPX loaded → hollow parking pin is redundant
         if (gpxLoaded) showParkingPin = false;
 
-        // --- Marker at resolved position ---
-        const markerEl = document.createElement('a');
-        markerEl.className = 'trail-pin';
-        markerEl.href = `/trails/${trail.slug}`;
-        const dot = document.createElement('span');
-        dot.className = 'trail-pin-dot';
-        markerEl.appendChild(dot);
-
-        const popup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 16,
-          className: 'trail-popup',
-        });
-
-        markerEl.addEventListener('mouseenter', () => {
-          const statsRows: string[] = [];
-          if (trail.distance_mi) statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Distance</span><span class="stat-value">${trail.distance_mi} mi</span></div>`);
-          if (trail.duration) statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Duration</span><span class="stat-value">${trail.duration}</span></div>`);
-          if (trail.stars) {
-            const filled = '★'.repeat(trail.stars);
-            const empty = '☆'.repeat(5 - trail.stars);
-            statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Rating</span><span class="stat-value stars">${filled}${empty}</span></div>`);
-          }
-          if (trail.difficulty) {
-            const label = trail.difficulty.charAt(0).toUpperCase() + trail.difficulty.slice(1);
-            statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Difficulty</span><span class="stat-value difficulty-value"><span class="difficulty-dot difficulty-${trail.difficulty}"></span>${label}</span></div>`);
-          }
-          if (trail.route_type) {
-            const typeLabels: Record<string, string> = { 'out-and-back': 'Out & back', 'loop': 'Loop', 'point-to-point': 'Point to point' };
-            const typeIcons: Record<string, string> = {
-              'out-and-back': '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 L21 12"/><path d="M7 8 L3 12 L7 16"/><path d="M17 8 L21 12 L17 16"/></svg>',
-              'loop': '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 5 A 7 7 0 1 1 5 10"/><path d="M5 7 L5 11 L9 11"/></svg>',
-              'point-to-point': '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12 L20 12"/><path d="M15 7 L20 12 L15 17"/></svg>',
-            };
-            statsRows.push(`<div class="trail-popup-stat"><span class="stat-label">Type</span><span class="stat-value route-type-value">${typeIcons[trail.route_type]}${typeLabels[trail.route_type]}</span></div>`);
-          }
-          popup
-            .setLngLat([pinLng, pinLat])
-            .setHTML(`<div class="trail-popup-inner">
-              <div class="trail-popup-title">${trail.title}</div>
-              <div class="trail-popup-summary">${trail.summary}</div>
-              ${statsRows.length ? `<div class="trail-popup-stats">${statsRows.join('')}</div>` : ''}
-              <div class="trail-popup-cta">Open trail →</div>
-            </div>`)
-            .addTo(map);
-        });
-
-        markerEl.addEventListener('mouseleave', () => popup.remove());
-
-        new maplibregl.Marker({ element: markerEl })
-          .setLngLat([pinLng, pinLat])
-          .addTo(map);
+        addTrailMarker(
+          pinLng, pinLat, trail.title, trail.summary,
+          `/trails/${trail.slug}`, isPlanned,
+          trail.distance_mi, trail.duration, trail.stars, trail.difficulty, trail.route_type
+        );
       }
 
-      // Hollow parking pin — only when no GPX track was loaded
       if (showParkingPin && parking) {
         const parkingEl = document.createElement('div');
         parkingEl.className = 'parking-pin';
         new maplibregl.Marker({ element: parkingEl })
           .setLngLat([parking.lng, parking.lat])
           .addTo(map);
+      }
+
+      // Load localStorage planned hikes
+      if (showFab) {
+        try {
+          const hikes: LsHike[] = JSON.parse(localStorage.getItem('tak-hikes') ?? '[]');
+          for (const hike of hikes) {
+            if (hike.status !== 'planned') continue;
+            addTrailMarker(
+              hike.lng, hike.lat, hike.title, hike.notes ?? '',
+              `/plan?view=${hike.id}`, true,
+              hike.distance_mi, hike.duration, undefined, hike.difficulty, hike.route_type
+            );
+          }
+        } catch (_) {}
       }
     });
   });
@@ -301,6 +361,13 @@ const parkingJson = parking ? JSON.stringify(parking) : '';
       0 2px 6px rgba(0,0,0,0.25);
   }
 
+  /* Hollow ring for planned trails */
+  .trail-pin-dot--planned {
+    background: var(--paper);
+    border: 2px solid var(--accent);
+    box-shadow: 0 0 0 3px var(--paper), 0 2px 6px rgba(0,0,0,0.18);
+  }
+
   .parking-pin {
     width: 14px;
     height: 14px;
@@ -324,6 +391,20 @@ const parkingJson = parking ? JSON.stringify(parking) : '';
   }
 
   .trail-popup-inner { display: flex; flex-direction: column; gap: 0; }
+
+  .trail-popup-status {
+    font-family: var(--font-ui);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 3px;
+  }
+
+  .trail-popup-status--planned {
+    color: #6c4aa8;
+  }
 
   .trail-popup-title {
     font-family: var(--font-display);
@@ -468,6 +549,40 @@ const parkingJson = parking ? JSON.stringify(parking) : '';
 
   .map-hint-gone {
     opacity: 0;
+  }
+
+  .map-fab {
+    position: absolute;
+    bottom: 48px;
+    right: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--accent);
+    color: var(--paper);
+    font-family: var(--font-ui);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 0.55rem 0.8rem;
+    border-radius: 2px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+    text-decoration: none;
+    z-index: 6;
+    transition: background 0.12s ease, transform 0.12s ease;
+  }
+
+  .map-fab:hover {
+    background: var(--accent-deep);
+    color: var(--paper);
+    transform: translateY(-1px);
+  }
+
+  .map-fab-plus {
+    font-size: 0.9rem;
+    line-height: 1;
+    font-weight: 700;
   }
 
   .map-attribution {

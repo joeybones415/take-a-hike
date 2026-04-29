@@ -1,0 +1,1325 @@
+---
+// Standalone plan page — handles new plan, edit plan (?edit=id), and view plan (?view=id)
+// All data lives in localStorage under key 'tak-hikes'
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Plan a hike — Take a Hike</title>
+  <meta name="description" content="Add a future trail to your map." />
+  <meta name="theme-color" content="#f5efe4" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500;1,9..144,600;1,9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+</head>
+<body>
+
+<!-- ═══════════════════════════════════ FORM MODE (new / edit) ═══ -->
+<div id="mode-form" class="mode">
+  <div class="form-bar">
+    <a href="/" class="form-bar-back">← All trails</a>
+    <a href="/" class="form-bar-wordmark">Take&nbsp;<em>a</em>&nbsp;Hike</a>
+    <div class="form-bar-right"></div>
+  </div>
+  <div class="plan-split">
+    <div class="plan-map-col">
+      <div id="plan-map" class="plan-map-el"></div>
+      <div class="map-drop-hint" id="map-drop-hint">Click anywhere to set the trailhead</div>
+    </div>
+    <div class="plan-form-col">
+      <div class="plan-form-inner">
+        <p class="form-eyebrow" id="form-eyebrow">New plan</p>
+        <h1 class="form-title">Plan <em>a</em> hike</h1>
+        <p class="form-lede">Drop a pin anywhere worth going. Name and location are all you need — everything else can wait.</p>
+
+        <form id="plan-form" novalidate>
+          <input type="hidden" name="lat" id="f-lat" />
+          <input type="hidden" name="lng" id="f-lng" />
+
+          <!-- Name -->
+          <div class="field">
+            <label class="field-label" for="f-name">Name <span class="req">*</span></label>
+            <input id="f-name" name="name" type="text" class="field-input" placeholder="Steep Ravine to Stinson" autocomplete="off" />
+            <p class="field-err" id="err-name" hidden>Name is required.</p>
+          </div>
+
+          <!-- Location tabs -->
+          <div class="field">
+            <label class="field-label">Location <span class="req">*</span></label>
+            <div class="loc-tabs" role="tablist">
+              <button type="button" class="loc-tab active" role="tab" data-tab="pin">Drop pin</button>
+              <button type="button" class="loc-tab" role="tab" data-tab="gpx">GPX file</button>
+              <button type="button" class="loc-tab" role="tab" data-tab="latlng">Lat / Lng</button>
+              <button type="button" class="loc-tab" role="tab" data-tab="gmap">Maps link</button>
+            </div>
+
+            <div class="loc-panel" id="panel-pin">
+              <div class="pin-status" id="pin-status">
+                <span class="pin-status-icon">◌</span>
+                <span id="pin-status-text">No location set — click the map</span>
+              </div>
+            </div>
+
+            <div class="loc-panel hidden" id="panel-gpx">
+              <label class="drop-area" id="gpx-drop-area">
+                <input type="file" id="gpx-file-input" accept=".gpx" hidden />
+                <span class="drop-icon">↑</span>
+                <span>Drop a <code>.gpx</code> file here or click to browse</span>
+              </label>
+              <p class="field-hint" id="gpx-hint"></p>
+            </div>
+
+            <div class="loc-panel hidden" id="panel-latlng">
+              <div class="inline-row">
+                <input type="text" id="latlng-input" class="field-input" placeholder="37.8973, −122.6012" />
+                <button type="button" class="btn btn-sm" id="latlng-apply">Apply</button>
+              </div>
+              <p class="field-hint">Decimal degrees — latitude, then longitude.</p>
+            </div>
+
+            <div class="loc-panel hidden" id="panel-gmap">
+              <div class="inline-row">
+                <input type="text" id="gmap-input" class="field-input" placeholder="https://maps.google.com/..." />
+                <button type="button" class="btn btn-sm" id="gmap-apply">Apply</button>
+              </div>
+              <p class="field-hint">Paste a long-form Google Maps URL containing coordinates.</p>
+            </div>
+
+            <p class="field-err" id="err-loc" hidden>Set a location on the map.</p>
+          </div>
+
+          <!-- Optional fields -->
+          <details class="optional-details" id="optional-details">
+            <summary class="optional-summary">Optional details</summary>
+            <div class="optional-body">
+
+              <div class="field">
+                <label class="field-label" for="f-region">Region / area</label>
+                <input id="f-region" name="region" type="text" class="field-input" placeholder="Mt. Tamalpais" />
+              </div>
+
+              <div class="field-row">
+                <div class="field">
+                  <label class="field-label" for="f-distance">Distance (mi)</label>
+                  <input id="f-distance" name="distance_mi" type="text" class="field-input" placeholder="~ 6.2" />
+                </div>
+                <div class="field">
+                  <label class="field-label" for="f-duration">Duration</label>
+                  <input id="f-duration" name="duration" type="text" class="field-input" placeholder="3–4 hrs" />
+                </div>
+              </div>
+
+              <div class="field-row">
+                <div class="field">
+                  <label class="field-label" for="f-elevation">Elev. gain (ft)</label>
+                  <input id="f-elevation" name="elevation_ft" type="text" class="field-input" placeholder="~ 1,400" />
+                </div>
+                <div class="field">
+                  <label class="field-label">Difficulty</label>
+                  <div class="opt-row" role="group">
+                    <label class="opt"><input type="radio" name="difficulty" value="easy" /><span class="swatch easy"></span>Easy</label>
+                    <label class="opt"><input type="radio" name="difficulty" value="moderate" /><span class="swatch moderate"></span>Mod.</label>
+                    <label class="opt"><input type="radio" name="difficulty" value="hard" /><span class="swatch hard"></span>Hard</label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="field">
+                <label class="field-label">Route type</label>
+                <div class="opt-row" role="group">
+                  <label class="opt"><input type="radio" name="route_type" value="out-and-back" />Out &amp; back</label>
+                  <label class="opt"><input type="radio" name="route_type" value="loop" />Loop</label>
+                  <label class="opt"><input type="radio" name="route_type" value="point-to-point" />Point to point</label>
+                </div>
+              </div>
+
+              <div class="field">
+                <label class="field-label" for="f-notes">Notes — why I want to do this</label>
+                <textarea id="f-notes" name="notes" class="field-textarea" rows="3" placeholder="A friend mentioned the eucalyptus stretch above Stinson. Best in early summer fog."></textarea>
+              </div>
+
+            </div>
+          </details>
+
+          <div class="form-actions">
+            <a href="/" class="btn btn-ghost">Cancel</a>
+            <button type="submit" class="btn btn-primary" id="submit-btn">Add to map →</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ VIEW MODE (planned trail detail) ═══ -->
+<div id="mode-view" class="mode hidden">
+  <div class="view-page">
+    <header class="site-header">
+      <a href="/" class="wordmark" aria-label="Take a Hike — home">Take&nbsp;<em>a</em>&nbsp;Hike</a>
+      <p class="tagline">a personal map of my adventures</p>
+    </header>
+
+    <main class="view-main">
+      <div class="view-map-wrap">
+        <div id="view-map" class="view-map-el"></div>
+      </div>
+
+      <div class="card">
+        <div class="eyebrow">
+          <span class="eyebrow-status">◌ Planned</span>
+          <span class="meta-divider" aria-hidden="true"></span>
+          <span id="v-region" class="eyebrow-region"></span>
+        </div>
+
+        <h1 id="v-title" class="trail-title"></h1>
+        <p id="v-summary" class="trail-lede"></p>
+
+        <dl class="facts" id="v-facts"></dl>
+
+        <div class="trail-actions">
+          <button type="button" class="action-btn action-btn-secondary" id="edit-btn">Edit plan</button>
+          <button type="button" class="action-btn action-btn-primary" id="mark-hiked-btn">✓ I hiked this →</button>
+        </div>
+
+        <!-- Review form — hidden until "I hiked this" clicked -->
+        <section class="review-section" id="review-section" hidden>
+          <div class="review-header">
+            <h2 class="review-title">How was it?</h2>
+            <p class="review-lede">Anything you fill in here becomes the trail record. The rest can wait.</p>
+          </div>
+          <form id="review-form" novalidate>
+            <div class="field-row three">
+              <div class="field">
+                <label class="field-label" for="r-date">Date hiked <span class="req">*</span></label>
+                <input id="r-date" name="date_hiked" type="date" class="field-input" required />
+              </div>
+              <div class="field">
+                <label class="field-label" for="r-dist">Actual distance</label>
+                <input id="r-dist" name="actual_distance" type="text" class="field-input" placeholder="6.4 mi" />
+              </div>
+              <div class="field">
+                <label class="field-label" for="r-dur">Actual duration</label>
+                <input id="r-dur" name="actual_duration" type="text" class="field-input" placeholder="3 hrs 40 min" />
+              </div>
+            </div>
+
+            <div class="field-row">
+              <div class="field">
+                <label class="field-label">Rating</label>
+                <div class="stars-input" id="stars-input" role="radiogroup" aria-label="Rating">
+                  <button type="button" class="star-btn" data-star="1" aria-label="1 star">★</button>
+                  <button type="button" class="star-btn" data-star="2" aria-label="2 stars">★</button>
+                  <button type="button" class="star-btn" data-star="3" aria-label="3 stars">★</button>
+                  <button type="button" class="star-btn" data-star="4" aria-label="4 stars">★</button>
+                  <button type="button" class="star-btn" data-star="5" aria-label="5 stars">★</button>
+                </div>
+                <input type="hidden" name="stars" id="r-stars" />
+              </div>
+              <div class="field">
+                <label class="field-label">Confirm difficulty</label>
+                <div class="opt-row" role="group">
+                  <label class="opt"><input type="radio" name="r_difficulty" value="easy" /><span class="swatch easy"></span>Easy</label>
+                  <label class="opt"><input type="radio" name="r_difficulty" value="moderate" /><span class="swatch moderate"></span>Mod.</label>
+                  <label class="opt"><input type="radio" name="r_difficulty" value="hard" /><span class="swatch hard"></span>Hard</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="field">
+              <label class="field-label" for="r-notes">Trail notes</label>
+              <textarea id="r-notes" name="review_notes" class="field-textarea" rows="4" placeholder="The trailhead is easy to miss — a dirt pullout near the Azalea Hill sign..."></textarea>
+            </div>
+
+            <div class="form-actions">
+              <button type="button" class="btn btn-ghost" id="cancel-review-btn">Cancel</button>
+              <button type="submit" class="btn btn-primary">Mark as hiked →</button>
+            </div>
+          </form>
+        </section>
+
+        <div class="danger-zone">
+          <button type="button" class="delete-btn" id="delete-btn">Delete this plan</button>
+        </div>
+
+        <p class="back-link"><a href="/">← All trails</a></p>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <a href="/">← All trails</a>
+    </footer>
+  </div>
+</div>
+
+<style>
+  /* ── Reset & tokens ── */
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+
+  :root {
+    --paper:        #f5efe4;
+    --paper-deep:   #ece3d0;
+    --ink:          #1f1b16;
+    --ink-soft:     #4a4238;
+    --ink-faint:    #8a7f70;
+    --rule:         #d8cdb6;
+    --accent:       #b9441f;
+    --accent-deep:  #8f3214;
+    --planned:      #6c4aa8;
+    --font-display: "Fraunces", Georgia, serif;
+    --font-body:    "Fraunces", Georgia, serif;
+    --font-ui:      "Inter", system-ui, sans-serif;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-body);
+    min-height: 100vh;
+  }
+
+  body::before {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 9999;
+    opacity: 0.4;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0.12 0 0 0 0 0.11 0 0 0 0 0.09 0 0 0 0.4 0'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-size: 300px 300px;
+  }
+
+  .mode { display: block; }
+  .hidden { display: none !important; }
+
+  /* ── Form mode layout ── */
+  #mode-form {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+  }
+
+  .form-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--rule);
+    background: var(--paper);
+    flex-shrink: 0;
+    gap: 1rem;
+  }
+
+  .form-bar-back {
+    font-family: var(--font-ui);
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: var(--ink-faint);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .form-bar-back:hover { color: var(--accent); }
+
+  .form-bar-wordmark {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .form-bar-wordmark em { font-style: italic; color: var(--accent); margin: 0 0.15em; }
+
+  .form-bar-right { min-width: 80px; }
+
+  .plan-split {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .plan-map-col {
+    position: relative;
+    border-right: 1px solid var(--rule);
+  }
+
+  .plan-map-el {
+    width: 100%;
+    height: 100%;
+  }
+
+  .map-drop-hint {
+    position: absolute;
+    top: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-ui);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+    background: rgba(245, 239, 228, 0.92);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 4px 12px;
+    pointer-events: none;
+    backdrop-filter: blur(2px);
+    white-space: nowrap;
+    transition: opacity 0.4s ease;
+  }
+  .map-drop-hint.pin-set { opacity: 0; }
+
+  .plan-form-col {
+    overflow-y: auto;
+    background: var(--paper);
+  }
+
+  .plan-form-inner {
+    padding: 2rem 1.75rem 3rem;
+    max-width: 420px;
+  }
+
+  .form-eyebrow {
+    font-family: var(--font-ui);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--planned);
+    margin: 0 0 0.4rem;
+  }
+
+  .form-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.8rem, 3vw, 2.4rem);
+    letter-spacing: -0.025em;
+    line-height: 1.05;
+    color: var(--ink);
+    margin: 0 0 0.5rem;
+  }
+  .form-title em { font-style: italic; color: var(--accent); }
+
+  .form-lede {
+    font-family: var(--font-body);
+    font-style: italic;
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+    line-height: 1.55;
+    margin: 0 0 1.5rem;
+  }
+
+  /* ── Fields ── */
+  .field { margin-bottom: 1rem; }
+  .field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+  .field-row.three { grid-template-columns: 1fr 1fr 1fr; }
+
+  .field-label {
+    display: block;
+    font-family: var(--font-ui);
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 0.35rem;
+  }
+  .field-label .req { color: var(--accent); }
+
+  .field-input {
+    width: 100%;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1.5px solid var(--rule);
+    border-radius: 2px;
+    padding: 0.55rem 0.75rem;
+    outline: none;
+    transition: border-color 0.12s ease;
+  }
+  .field-input:focus { border-color: var(--ink-soft); }
+  .field-input::placeholder { color: var(--ink-faint); }
+
+  .field-textarea {
+    width: 100%;
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1.5px solid var(--rule);
+    border-radius: 2px;
+    padding: 0.55rem 0.75rem;
+    outline: none;
+    resize: vertical;
+    line-height: 1.5;
+    transition: border-color 0.12s ease;
+  }
+  .field-textarea:focus { border-color: var(--ink-soft); }
+  .field-textarea::placeholder { color: var(--ink-faint); }
+
+  .field-hint {
+    font-family: var(--font-ui);
+    font-size: 0.72rem;
+    color: var(--ink-faint);
+    margin: 0.3rem 0 0;
+    line-height: 1.4;
+  }
+
+  .field-err {
+    font-family: var(--font-ui);
+    font-size: 0.72rem;
+    color: #c0392b;
+    margin: 0.3rem 0 0;
+  }
+
+  /* ── Location tabs ── */
+  .loc-tabs {
+    display: flex;
+    border-bottom: 1.5px solid var(--rule);
+    margin-bottom: 0.75rem;
+    gap: 0;
+  }
+
+  .loc-tab {
+    padding: 0.4rem 0.7rem;
+    font-family: var(--font-ui);
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1.5px;
+    cursor: pointer;
+    transition: color 0.12s;
+  }
+  .loc-tab.active { color: var(--ink); border-bottom-color: var(--accent); }
+  .loc-tab:hover:not(.active) { color: var(--ink-soft); }
+
+  .loc-panel { margin-bottom: 0.25rem; }
+
+  .pin-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-ui);
+    font-size: 0.78rem;
+    color: var(--ink-faint);
+    padding: 0.5rem 0.75rem;
+    border: 1.5px dashed var(--rule);
+    border-radius: 2px;
+  }
+  .pin-status.has-pin {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .pin-status-icon { font-size: 1rem; }
+
+  .drop-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 1.25rem;
+    border: 1.5px dashed var(--rule);
+    border-radius: 2px;
+    font-family: var(--font-ui);
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.12s, background 0.12s;
+  }
+  .drop-area:hover { border-color: var(--ink-soft); background: var(--paper-deep); }
+  .drop-area.drag-over { border-color: var(--accent); background: rgba(185,68,31,0.04); }
+  .drop-icon { font-size: 1.2rem; color: var(--ink-faint); }
+
+  .inline-row {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+  .inline-row .field-input { flex: 1; }
+
+  /* ── Optional details ── */
+  .optional-details {
+    margin-bottom: 1rem;
+    border: 1.5px solid var(--rule);
+    border-radius: 2px;
+  }
+
+  .optional-summary {
+    padding: 0.6rem 0.8rem;
+    font-family: var(--font-ui);
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .optional-summary::-webkit-details-marker { display: none; }
+  .optional-summary::before {
+    content: '+';
+    font-size: 0.85rem;
+    color: var(--ink-faint);
+    transition: transform 0.15s;
+  }
+  details[open] .optional-summary::before { content: '−'; }
+
+  .optional-body {
+    padding: 0.75rem 0.8rem 0.9rem;
+    border-top: 1px solid var(--rule);
+  }
+
+  /* ── Opt-row (radio group) ── */
+  .opt-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.25rem;
+  }
+  .opt {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1.5px solid var(--rule);
+    border-radius: 2px;
+    padding: 0.3rem 0.55rem;
+    font-family: var(--font-ui);
+    font-size: 0.68rem;
+    font-weight: 500;
+    color: var(--ink-soft);
+    cursor: pointer;
+    background: var(--paper);
+    transition: border-color 0.1s, color 0.1s;
+  }
+  .opt:has(input:checked) {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(185,68,31,0.05);
+  }
+  .opt input { position: absolute; opacity: 0; pointer-events: none; }
+  .swatch {
+    width: 8px; height: 8px; border-radius: 50%;
+    display: inline-block; background: var(--rule);
+  }
+  .swatch.easy { background: #5ba65a; }
+  .swatch.moderate { background: #d4a64a; }
+  .swatch.hard { background: #c24a3a; }
+
+  /* ── Buttons ── */
+  .form-actions {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+    padding-top: 0.85rem;
+    margin-top: 0.5rem;
+    border-top: 1px solid var(--rule);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--font-ui);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.6rem 1rem;
+    border-radius: 2px;
+    border: 1.5px solid var(--rule);
+    background: transparent;
+    color: var(--ink-soft);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+  }
+  .btn:hover { border-color: var(--ink-soft); background: var(--paper-deep); color: var(--ink); }
+  .btn-primary {
+    background: var(--accent); color: var(--paper); border-color: var(--accent);
+  }
+  .btn-primary:hover { background: var(--accent-deep); border-color: var(--accent-deep); color: var(--paper); }
+  .btn-ghost { border-style: dashed; }
+  .btn-sm { padding: 0.5rem 0.7rem; white-space: nowrap; }
+
+  /* ── View mode ── */
+  #mode-view {
+    min-height: 100vh;
+  }
+
+  .view-page { display: flex; flex-direction: column; min-height: 100vh; }
+
+  .site-header {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 1.5rem;
+    border-bottom: 1px solid var(--rule);
+    width: 100%;
+  }
+
+  .wordmark {
+    display: inline-flex;
+    align-items: baseline;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .wordmark em { font-style: italic; color: var(--accent); margin: 0 0.18em; }
+
+  .tagline {
+    margin: 0.25rem 0 0;
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .view-main {
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+    width: 100%;
+    flex: 1;
+  }
+
+  .view-map-wrap {
+    margin: 0 -1.5rem;
+    height: clamp(240px, 45vh, 480px);
+  }
+
+  .view-map-el {
+    width: 100%;
+    height: 100%;
+  }
+
+  .card {
+    max-width: 620px;
+    margin: 0 auto;
+    padding: 2.5rem 0 4rem;
+  }
+
+  .eyebrow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+    font-family: var(--font-ui);
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 1rem;
+  }
+
+  .eyebrow-status { color: var(--planned); font-weight: 700; }
+  .eyebrow-region { color: var(--ink-faint); }
+
+  .meta-divider {
+    display: inline-block;
+    width: 1px;
+    height: 11px;
+    background: var(--rule);
+    flex-shrink: 0;
+  }
+
+  .trail-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    letter-spacing: -0.025em;
+    line-height: 1.1;
+    color: var(--ink);
+    margin: 0 0 1rem;
+  }
+
+  .trail-lede {
+    font-family: var(--font-body);
+    font-style: italic;
+    font-size: 1.15rem;
+    color: var(--ink-soft);
+    line-height: 1.6;
+    margin: 0 0 1.75rem;
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 1.5rem;
+    margin: 0 0 2rem;
+    padding: 0.85rem 0;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .fact { display: flex; flex-direction: column; gap: 0.15rem; }
+  .facts dt {
+    font-family: var(--font-ui);
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .facts dd {
+    font-family: var(--font-body);
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--ink-soft);
+    margin: 0;
+    font-style: italic;
+  }
+
+  .trail-actions {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    justify-content: center;
+  }
+
+  .action-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-ui);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 0.85rem 1.3rem;
+    border-radius: 2px;
+    border: 1px solid var(--rule);
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s, transform 0.15s, border-color 0.15s;
+    background: transparent;
+    color: var(--ink);
+  }
+  .action-btn:hover { transform: translateY(-1px); }
+  .action-btn-primary { background: var(--accent); color: var(--paper); border-color: var(--accent); }
+  .action-btn-primary:hover { background: var(--accent-deep); border-color: var(--accent-deep); }
+  .action-btn-secondary:hover { border-color: var(--ink-soft); background: var(--paper-deep); }
+
+  /* ── Review form ── */
+  .review-section {
+    margin-top: 2.5rem;
+    padding-top: 2rem;
+    border-top: 2px dashed var(--rule);
+  }
+
+  .review-header { margin-bottom: 1.25rem; }
+
+  .review-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.6rem;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin: 0 0 0.4rem;
+  }
+
+  .review-lede {
+    font-family: var(--font-body);
+    font-style: italic;
+    font-size: 0.95rem;
+    color: var(--ink-soft);
+    margin: 0;
+    line-height: 1.5;
+  }
+
+  /* Stars input */
+  .stars-input {
+    display: inline-flex;
+    gap: 2px;
+    margin-top: 0.25rem;
+  }
+
+  .star-btn {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--rule);
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    transition: color 0.1s, transform 0.1s;
+  }
+  .star-btn:hover,
+  .star-btn.active { color: var(--accent); }
+  .star-btn:hover { transform: scale(1.15); }
+
+  /* Danger zone */
+  .danger-zone {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--rule);
+    text-align: center;
+  }
+
+  .delete-btn {
+    font-family: var(--font-ui);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    background: none;
+    border: none;
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-color: var(--rule);
+    transition: color 0.12s;
+  }
+  .delete-btn:hover { color: #c0392b; text-decoration-color: #c0392b; }
+
+  .back-link {
+    font-family: var(--font-ui);
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+    margin: 2rem 0 0;
+  }
+  .back-link a { color: var(--ink-faint); text-decoration: none; }
+  .back-link a:hover { color: var(--accent); }
+
+  .site-footer {
+    max-width: 780px;
+    margin: 4rem auto 0;
+    padding: 1.25rem 1.5rem 2rem;
+    border-top: 1px solid var(--rule);
+    font-family: var(--font-ui);
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+    width: 100%;
+  }
+  .site-footer a { color: var(--ink-faint); text-decoration: none; }
+  .site-footer a:hover { color: var(--accent); }
+
+  /* ── MapLibre overrides ── */
+  .maplibregl-ctrl-zoom-in,
+  .maplibregl-ctrl-zoom-out {
+    background-color: var(--paper) !important;
+    border-color: var(--rule) !important;
+    color: var(--ink-soft) !important;
+  }
+  .maplibregl-ctrl-group {
+    border: 1px solid var(--rule) !important;
+    border-radius: 2px !important;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1) !important;
+    background: none !important;
+  }
+  .maplibregl-ctrl-group button + button { border-top-color: var(--rule) !important; }
+
+  /* ── Responsive ── */
+  @media (max-width: 700px) {
+    .plan-split { grid-template-columns: 1fr; grid-template-rows: 55vw 1fr; }
+    .plan-form-col { overflow-y: auto; }
+    .plan-map-col { border-right: none; border-bottom: 1px solid var(--rule); }
+    .field-row, .field-row.three { grid-template-columns: 1fr; }
+    .plan-form-inner { padding: 1.25rem 1.25rem 2.5rem; }
+  }
+</style>
+
+<script>
+  import maplibregl from 'maplibre-gl';
+
+  interface LsHike {
+    id: string;
+    status: 'planned' | 'hiked';
+    title: string;
+    lat: number;
+    lng: number;
+    notes?: string;
+    distance_mi?: number;
+    duration?: string;
+    elevation_ft?: number;
+    difficulty?: 'easy' | 'moderate' | 'hard';
+    route_type?: 'out-and-back' | 'loop' | 'point-to-point';
+    region?: string;
+    created_at: string;
+    // set at review
+    date_hiked?: string;
+    actual_distance?: string;
+    actual_duration?: string;
+    stars?: number;
+    review_notes?: string;
+  }
+
+  function getHikes(): LsHike[] {
+    try { return JSON.parse(localStorage.getItem('tak-hikes') ?? '[]'); }
+    catch { return []; }
+  }
+  function saveHikes(hikes: LsHike[]) {
+    localStorage.setItem('tak-hikes', JSON.stringify(hikes));
+  }
+
+  const params = new URLSearchParams(location.search);
+  const viewId = params.get('view');
+  const editId = params.get('edit');
+
+  const STYLE = 'https://tiles.stadiamaps.com/styles/stamen_terrain_background.json';
+
+  // ────────────────────────────── VIEW MODE ──────────────────────────────
+  if (viewId) {
+    const formEl = document.getElementById('mode-form')!;
+    const viewEl = document.getElementById('mode-view')!;
+    formEl.classList.add('hidden');
+    viewEl.classList.remove('hidden');
+
+    const hike = getHikes().find(h => h.id === viewId);
+    if (!hike) {
+      document.getElementById('v-title')!.textContent = 'Plan not found.';
+    } else {
+      // Populate view
+      (document.getElementById('v-title') as HTMLElement).textContent = hike.title;
+      const summaryEl = document.getElementById('v-summary') as HTMLElement;
+      if (hike.notes) { summaryEl.textContent = hike.notes; }
+      else { summaryEl.style.display = 'none'; }
+
+      const regionEl = document.getElementById('v-region') as HTMLElement;
+      if (hike.region) { regionEl.textContent = hike.region; }
+      else { regionEl.closest('.eyebrow')?.querySelector('.meta-divider')?.remove(); regionEl.style.display = 'none'; }
+
+      // Facts
+      const factsEl = document.getElementById('v-facts') as HTMLElement;
+      const factItems: string[] = [];
+      if (hike.distance_mi) factItems.push(`<div class="fact"><dt>Distance</dt><dd>~ ${hike.distance_mi} mi</dd></div>`);
+      if (hike.duration)    factItems.push(`<div class="fact"><dt>Duration</dt><dd>~ ${hike.duration}</dd></div>`);
+      if (hike.elevation_ft) factItems.push(`<div class="fact"><dt>Elev. gain</dt><dd>~ ${hike.elevation_ft.toLocaleString()} ft</dd></div>`);
+      if (hike.difficulty)  factItems.push(`<div class="fact"><dt>Difficulty</dt><dd>~ ${hike.difficulty.charAt(0).toUpperCase() + hike.difficulty.slice(1)}</dd></div>`);
+      if (hike.route_type) {
+        const labels: Record<string, string> = { 'out-and-back': 'Out & back', 'loop': 'Loop', 'point-to-point': 'Point to point' };
+        factItems.push(`<div class="fact"><dt>Route</dt><dd>${labels[hike.route_type]}</dd></div>`);
+      }
+      if (factItems.length === 0) factsEl.style.display = 'none';
+      else factsEl.innerHTML = factItems.join('');
+
+      // View map
+      const viewMap = new maplibregl.Map({
+        container: 'view-map',
+        style: STYLE,
+        center: [hike.lng, hike.lat],
+        zoom: 12,
+        attributionControl: false,
+      });
+      viewMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+      viewMap.on('load', () => {
+        const el = document.createElement('div');
+        el.style.cssText = 'width:14px;height:14px;border-radius:50%;background:var(--paper);border:2px solid #b9441f;box-shadow:0 0 0 3px var(--paper),0 2px 6px rgba(0,0,0,0.18)';
+        new maplibregl.Marker({ element: el }).setLngLat([hike.lng, hike.lat]).addTo(viewMap);
+      });
+
+      // Edit plan → redirect to form in edit mode
+      document.getElementById('edit-btn')!.addEventListener('click', () => {
+        window.location.href = `/plan?edit=${hike.id}`;
+      });
+
+      // Mark as hiked → expand review form
+      const markBtn = document.getElementById('mark-hiked-btn')!;
+      const reviewSection = document.getElementById('review-section') as HTMLElement;
+      markBtn.addEventListener('click', () => {
+        reviewSection.hidden = false;
+        reviewSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        markBtn.setAttribute('disabled', '');
+      });
+
+      document.getElementById('cancel-review-btn')!.addEventListener('click', () => {
+        reviewSection.hidden = true;
+        markBtn.removeAttribute('disabled');
+      });
+
+      // Star rating
+      let selectedStars = 0;
+      document.querySelectorAll<HTMLButtonElement>('.star-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          selectedStars = parseInt(btn.dataset.star!);
+          (document.getElementById('r-stars') as HTMLInputElement).value = String(selectedStars);
+          document.querySelectorAll<HTMLButtonElement>('.star-btn').forEach((b, i) => {
+            b.classList.toggle('active', i < selectedStars);
+          });
+        });
+        btn.addEventListener('mouseenter', () => {
+          const hoverStar = parseInt(btn.dataset.star!);
+          document.querySelectorAll<HTMLButtonElement>('.star-btn').forEach((b, i) => {
+            b.style.color = i < hoverStar ? '#b9441f' : '';
+          });
+        });
+        btn.addEventListener('mouseleave', () => {
+          document.querySelectorAll<HTMLButtonElement>('.star-btn').forEach((b, i) => {
+            b.style.color = '';
+            b.classList.toggle('active', i < selectedStars);
+          });
+        });
+      });
+
+      // Pre-fill review difficulty from planned difficulty
+      if (hike.difficulty) {
+        const radio = document.querySelector<HTMLInputElement>(`input[name="r_difficulty"][value="${hike.difficulty}"]`);
+        if (radio) radio.checked = true;
+      }
+
+      // Review form submit
+      document.getElementById('review-form')!.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target as HTMLFormElement);
+        const dateHiked = (fd.get('date_hiked') as string).trim();
+        if (!dateHiked) {
+          (document.getElementById('r-date') as HTMLInputElement).focus();
+          return;
+        }
+        const hikes = getHikes();
+        const idx = hikes.findIndex(h => h.id === viewId);
+        if (idx >= 0) {
+          hikes[idx] = {
+            ...hikes[idx],
+            status: 'hiked',
+            date_hiked: dateHiked,
+            actual_distance: (fd.get('actual_distance') as string) || undefined,
+            actual_duration: (fd.get('actual_duration') as string) || undefined,
+            stars: selectedStars || undefined,
+            difficulty: (fd.get('r_difficulty') as LsHike['difficulty']) || hike.difficulty,
+            review_notes: (fd.get('review_notes') as string) || undefined,
+          };
+          saveHikes(hikes);
+        }
+        window.location.href = '/';
+      });
+
+      // Delete
+      document.getElementById('delete-btn')!.addEventListener('click', () => {
+        if (!confirm(`Delete "${hike.title}"? This can't be undone.`)) return;
+        const hikes = getHikes().filter(h => h.id !== viewId);
+        saveHikes(hikes);
+        window.location.href = '/';
+      });
+    }
+
+  // ────────────────────────────── FORM MODE (new / edit) ──────────────────────────────
+  } else {
+    let droppedMarker: maplibregl.Marker | null = null;
+    let droppedLat = 0;
+    let droppedLng = 0;
+
+    // If editing, pre-load the existing hike
+    const existingHike = editId ? getHikes().find(h => h.id === editId) : null;
+    if (existingHike) {
+      (document.getElementById('form-eyebrow') as HTMLElement).textContent = 'Edit plan';
+      (document.getElementById('f-name') as HTMLInputElement).value = existingHike.title;
+      if (existingHike.region) (document.getElementById('f-region') as HTMLInputElement).value = existingHike.region;
+      if (existingHike.distance_mi) (document.getElementById('f-distance') as HTMLInputElement).value = String(existingHike.distance_mi);
+      if (existingHike.duration) (document.getElementById('f-duration') as HTMLInputElement).value = existingHike.duration;
+      if (existingHike.elevation_ft) (document.getElementById('f-elevation') as HTMLInputElement).value = String(existingHike.elevation_ft);
+      if (existingHike.notes) (document.getElementById('f-notes') as HTMLTextAreaElement).value = existingHike.notes;
+      if (existingHike.difficulty) {
+        const r = document.querySelector<HTMLInputElement>(`input[name="difficulty"][value="${existingHike.difficulty}"]`);
+        if (r) r.checked = true;
+      }
+      if (existingHike.route_type) {
+        const r = document.querySelector<HTMLInputElement>(`input[name="route_type"][value="${existingHike.route_type}"]`);
+        if (r) r.checked = true;
+      }
+      (document.getElementById('optional-details') as HTMLDetailsElement).open = true;
+      (document.getElementById('submit-btn') as HTMLButtonElement).textContent = 'Save changes →';
+      droppedLat = existingHike.lat;
+      droppedLng = existingHike.lng;
+    }
+
+    // Plan map
+    const planMap = new maplibregl.Map({
+      container: 'plan-map',
+      style: STYLE,
+      center: existingHike ? [existingHike.lng, existingHike.lat] : [-122.3, 38.2],
+      zoom: existingHike ? 12 : 8,
+      attributionControl: false,
+    });
+    planMap.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+
+    function setDroppedPin(lng: number, lat: number) {
+      droppedLng = lng;
+      droppedLat = lat;
+      (document.getElementById('f-lng') as HTMLInputElement).value = String(lng);
+      (document.getElementById('f-lat') as HTMLInputElement).value = String(lat);
+
+      if (droppedMarker) droppedMarker.remove();
+      const dotEl = document.createElement('div');
+      dotEl.style.cssText = 'width:14px;height:14px;border-radius:50%;background:var(--paper);border:2px solid #b9441f;box-shadow:0 0 0 3px var(--paper),0 2px 6px rgba(0,0,0,0.18);cursor:grab';
+      droppedMarker = new maplibregl.Marker({ element: dotEl, draggable: true })
+        .setLngLat([lng, lat])
+        .addTo(planMap);
+      droppedMarker.on('dragend', () => {
+        const pos = droppedMarker!.getLngLat();
+        setDroppedPin(pos.lng, pos.lat);
+      });
+
+      const statusEl = document.getElementById('pin-status')!;
+      const textEl = document.getElementById('pin-status-text')!;
+      statusEl.classList.add('has-pin');
+      textEl.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+      document.getElementById('map-drop-hint')!.classList.add('pin-set');
+      document.getElementById('err-loc')!.hidden = true;
+    }
+
+    planMap.on('load', () => {
+      planMap.getCanvas().style.cursor = 'crosshair';
+      planMap.on('click', (e) => {
+        setDroppedPin(e.lngLat.lng, e.lngLat.lat);
+        planMap.flyTo({ center: [e.lngLat.lng, e.lngLat.lat], zoom: Math.max(planMap.getZoom(), 11), duration: 600 });
+      });
+      if (existingHike) setDroppedPin(existingHike.lng, existingHike.lat);
+    });
+
+    // Location tabs
+    document.querySelectorAll<HTMLButtonElement>('.loc-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.loc-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.loc-panel').forEach(p => p.classList.add('hidden'));
+        tab.classList.add('active');
+        document.getElementById(`panel-${tab.dataset.tab}`)!.classList.remove('hidden');
+      });
+    });
+
+    // Lat/lng apply
+    document.getElementById('latlng-apply')!.addEventListener('click', () => {
+      const raw = (document.getElementById('latlng-input') as HTMLInputElement).value.trim();
+      const match = raw.match(/(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/);
+      if (!match) { alert('Couldn\'t parse those coordinates. Try: 37.8973, -122.6012'); return; }
+      const lat = parseFloat(match[1]), lng = parseFloat(match[2]);
+      setDroppedPin(lng, lat);
+      planMap.flyTo({ center: [lng, lat], zoom: 12, duration: 800 });
+      // Switch to pin tab
+      document.querySelectorAll('.loc-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.loc-panel').forEach(p => p.classList.add('hidden'));
+      document.querySelector<HTMLButtonElement>('[data-tab="pin"]')!.classList.add('active');
+      document.getElementById('panel-pin')!.classList.remove('hidden');
+    });
+
+    // Google Maps link apply
+    document.getElementById('gmap-apply')!.addEventListener('click', () => {
+      const url = (document.getElementById('gmap-input') as HTMLInputElement).value.trim();
+      const match = url.match(/@(-?\d+\.?\d+),(-?\d+\.?\d+)/) || url.match(/ll=(-?\d+\.?\d+),(-?\d+\.?\d+)/);
+      if (!match) { alert('Couldn\'t find coordinates in that URL. Try a long-form Google Maps link containing @lat,lng or ll=lat,lng.'); return; }
+      const lat = parseFloat(match[1]), lng = parseFloat(match[2]);
+      setDroppedPin(lng, lat);
+      planMap.flyTo({ center: [lng, lat], zoom: 12, duration: 800 });
+      document.querySelectorAll('.loc-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.loc-panel').forEach(p => p.classList.add('hidden'));
+      document.querySelector<HTMLButtonElement>('[data-tab="pin"]')!.classList.add('active');
+      document.getElementById('panel-pin')!.classList.remove('hidden');
+    });
+
+    // GPX file upload
+    const gpxInput = document.getElementById('gpx-file-input') as HTMLInputElement;
+    const gpxDropArea = document.getElementById('gpx-drop-area') as HTMLElement;
+
+    async function handleGpxFile(file: File) {
+      const hint = document.getElementById('gpx-hint')!;
+      hint.textContent = `Parsing ${file.name}…`;
+      try {
+        const text = await file.text();
+        const doc = new DOMParser().parseFromString(text, 'application/xml');
+        const pts = [...doc.querySelectorAll('trkpt,rtept,wpt')].map(p => ({
+          lat: parseFloat(p.getAttribute('lat')!),
+          lng: parseFloat(p.getAttribute('lon')!),
+        })).filter(p => !isNaN(p.lat) && !isNaN(p.lng));
+        if (pts.length === 0) throw new Error('No track points found');
+        setDroppedPin(pts[0].lng, pts[0].lat);
+        planMap.flyTo({ center: [pts[0].lng, pts[0].lat], zoom: 12, duration: 800 });
+        hint.textContent = `✓ Set to first point of ${file.name} (${pts.length} points)`;
+        document.querySelectorAll('.loc-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.loc-panel').forEach(p => p.classList.add('hidden'));
+        document.querySelector<HTMLButtonElement>('[data-tab="pin"]')!.classList.add('active');
+        document.getElementById('panel-pin')!.classList.remove('hidden');
+      } catch (err) {
+        hint.textContent = `Error: ${(err as Error).message}`;
+      }
+    }
+
+    gpxInput.addEventListener('change', () => { if (gpxInput.files?.[0]) handleGpxFile(gpxInput.files[0]); });
+    gpxDropArea.addEventListener('dragover', e => { e.preventDefault(); gpxDropArea.classList.add('drag-over'); });
+    gpxDropArea.addEventListener('dragleave', () => gpxDropArea.classList.remove('drag-over'));
+    gpxDropArea.addEventListener('drop', e => {
+      e.preventDefault();
+      gpxDropArea.classList.remove('drag-over');
+      const file = e.dataTransfer?.files[0];
+      if (file) handleGpxFile(file);
+    });
+
+    // Form submit
+    document.getElementById('plan-form')!.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target as HTMLFormElement);
+      const name = (fd.get('name') as string).trim();
+      let valid = true;
+
+      if (!name) {
+        document.getElementById('err-name')!.hidden = false;
+        (document.getElementById('f-name') as HTMLInputElement).focus();
+        valid = false;
+      } else {
+        document.getElementById('err-name')!.hidden = true;
+      }
+
+      if (!droppedLat && !droppedLng) {
+        document.getElementById('err-loc')!.hidden = false;
+        valid = false;
+      } else {
+        document.getElementById('err-loc')!.hidden = true;
+      }
+
+      if (!valid) return;
+
+      const distanceRaw = (fd.get('distance_mi') as string).replace(/[~,\s]/g, '');
+      const elevRaw = (fd.get('elevation_ft') as string).replace(/[~,\s]/g, '');
+
+      const hike: LsHike = {
+        id: editId ?? crypto.randomUUID(),
+        status: 'planned',
+        title: name,
+        lat: droppedLat,
+        lng: droppedLng,
+        region: (fd.get('region') as string).trim() || undefined,
+        notes: (fd.get('notes') as string).trim() || undefined,
+        distance_mi: parseFloat(distanceRaw) || undefined,
+        duration: (fd.get('duration') as string).trim() || undefined,
+        elevation_ft: parseFloat(elevRaw) || undefined,
+        difficulty: (fd.get('difficulty') as LsHike['difficulty']) || undefined,
+        route_type: (fd.get('route_type') as LsHike['route_type']) || undefined,
+        created_at: existingHike?.created_at ?? new Date().toISOString(),
+      };
+
+      const hikes = getHikes();
+      if (editId) {
+        const idx = hikes.findIndex(h => h.id === editId);
+        if (idx >= 0) hikes[idx] = hike; else hikes.push(hike);
+      } else {
+        hikes.push(hike);
+      }
+      saveHikes(hikes);
+      window.location.href = '/';
+    });
+  }
+</script>
+
+</body>
+</html>

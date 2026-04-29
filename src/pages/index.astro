@@ -4,7 +4,14 @@ import Base from '../layouts/Base.astro';
 import Map from '../components/Map.astro';
 
 const allTrails = await getCollection('trails');
-allTrails.sort((a, b) => b.data.date.getTime() - a.data.date.getTime());
+allTrails.sort((a, b) => {
+  const aTime = a.data.date?.getTime() ?? 0;
+  const bTime = b.data.date?.getTime() ?? 0;
+  return bTime - aTime;
+});
+
+const hikedTrails = allTrails.filter(t => (t.data.status ?? 'hiked') === 'hiked');
+const staticPlannedTrails = allTrails.filter(t => t.data.status === 'planned');
 
 const pins = allTrails.map(t => ({
   slug: t.id.replace(/\.md$/, ''),
@@ -12,6 +19,7 @@ const pins = allTrails.map(t => ({
   summary: t.data.summary,
   lat: t.data.lat,
   lng: t.data.lng,
+  status: t.data.status ?? 'hiked',
   gpx: t.data.gpx,
   distance_mi: t.data.distance_mi,
   duration: t.data.duration,
@@ -19,11 +27,10 @@ const pins = allTrails.map(t => ({
   difficulty: t.data.difficulty,
   route_type: t.data.route_type,
 }));
-
 ---
 
 <Base title="Take a Hike" description="a personal map of my adventures.">
-  <Map trails={pins} height="min(70vh, 640px)" />
+  <Map trails={pins} height="min(70vh, 640px)" showFab={true} />
 
   <p class="atlas-intro">
     <em>A personal map of my hikes that I have completed or have planned. Click a pin to see more details.</em>
@@ -32,11 +39,13 @@ const pins = allTrails.map(t => ({
   <section class="index-list">
     <header class="list-head">
       <h2 class="list-title">The Reports</h2>
-      <span class="trail-count">{allTrails.length} {allTrails.length === 1 ? 'trail' : 'trails'}</span>
+      <span class="trail-count" id="trail-count">
+        {hikedTrails.length} hiked{staticPlannedTrails.length > 0 ? ` · ${staticPlannedTrails.length} planned` : ''}
+      </span>
     </header>
 
     <ol class="trail-list">
-      {allTrails.map((trail) => {
+      {hikedTrails.map((trail) => {
         const slug = trail.id.replace(/\.md$/, '');
         return (
           <li class="trail-row">
@@ -116,8 +125,111 @@ const pins = allTrails.map(t => ({
         );
       })}
     </ol>
+
+    <!-- Planned section: static from markdown + localStorage hikes injected by JS -->
+    <div class="planned-section" id="planned-section" style={staticPlannedTrails.length === 0 ? 'display:none' : ''}>
+      <div class="planned-section-head">
+        <span class="planned-label">◌ Planned</span>
+      </div>
+
+      {staticPlannedTrails.map((trail) => {
+        const slug = trail.id.replace(/\.md$/, '');
+        return (
+          <a href={`/trails/${slug}`} class="trail-link planned-row">
+            <span class="planned-num" aria-hidden="true">—</span>
+            <div class="trail-body">
+              <p class="trail-title planned-title">{trail.data.title}</p>
+              <p class="trail-summary">{trail.data.notes ?? trail.data.summary}</p>
+              <div class="trail-row-meta">
+                <span class="region">{trail.data.region}</span>
+                {trail.data.difficulty && (
+                  <>
+                    <span class="meta-divider" aria-hidden="true"></span>
+                    <span class="difficulty-inline">
+                      <span class={`difficulty-dot difficulty-${trail.data.difficulty}`} aria-hidden="true"></span>
+                      ~{trail.data.difficulty.charAt(0).toUpperCase() + trail.data.difficulty.slice(1)}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </a>
+        );
+      })}
+
+      <!-- localStorage planned hikes injected here -->
+      <div id="ls-planned-list"></div>
+    </div>
   </section>
 </Base>
+
+<script>
+  interface LsHike {
+    id: string;
+    status: 'planned' | 'hiked';
+    title: string;
+    lat: number;
+    lng: number;
+    notes?: string;
+    distance_mi?: number;
+    duration?: string;
+    elevation_ft?: number;
+    difficulty?: 'easy' | 'moderate' | 'hard';
+    route_type?: 'out-and-back' | 'loop' | 'point-to-point';
+    region?: string;
+  }
+
+  function difficultyLabel(d: string) {
+    return d.charAt(0).toUpperCase() + d.slice(1);
+  }
+
+  function buildPlannedRow(hike: LsHike): string {
+    const meta = [
+      hike.region ? `<span class="region">${hike.region}</span>` : '',
+      hike.difficulty
+        ? `<span class="meta-divider" aria-hidden="true"></span>
+           <span class="difficulty-inline">
+             <span class="difficulty-dot difficulty-${hike.difficulty}" aria-hidden="true"></span>
+             ~${difficultyLabel(hike.difficulty)}
+           </span>`
+        : '',
+    ].filter(Boolean).join('');
+
+    return `
+      <a href="/plan?view=${hike.id}" class="trail-link planned-row ls-planned-row">
+        <span class="planned-num" aria-hidden="true">—</span>
+        <div class="trail-body">
+          <p class="trail-title planned-title">${hike.title}</p>
+          ${hike.notes ? `<p class="trail-summary">${hike.notes}</p>` : ''}
+          <div class="trail-row-meta">${meta}</div>
+        </div>
+      </a>
+    `;
+  }
+
+  try {
+    const hikes: LsHike[] = JSON.parse(localStorage.getItem('tak-hikes') ?? '[]');
+    const lsPlanned = hikes.filter(h => h.status === 'planned');
+
+    if (lsPlanned.length > 0) {
+      const section = document.getElementById('planned-section')!;
+      const listEl = document.getElementById('ls-planned-list')!;
+      section.style.display = '';
+      listEl.innerHTML = lsPlanned.map(buildPlannedRow).join('');
+
+      // Update count display
+      const countEl = document.getElementById('trail-count');
+      if (countEl) {
+        const hikedMatch = countEl.textContent?.match(/(\d+) hiked/);
+        const hikedN = hikedMatch ? parseInt(hikedMatch[1]) : 0;
+        const staticPlannedMatch = countEl.textContent?.match(/· (\d+) planned/);
+        const staticPlannedN = staticPlannedMatch ? parseInt(staticPlannedMatch[1]) : 0;
+        const totalPlanned = staticPlannedN + lsPlanned.length;
+        countEl.textContent = `${hikedN} hiked · ${totalPlanned} planned`;
+      }
+    }
+  } catch (_) {}
+</script>
 
 <style>
   .index-list {
@@ -297,5 +409,53 @@ const pins = allTrails.map(t => ({
 
   .atlas-intro em {
     font-style: italic;
+  }
+
+  /* Planned section */
+  .planned-section {
+    margin-top: 0;
+    border-bottom: 1px solid var(--rule);
+  }
+
+  .planned-section-head {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 0.5rem 0.6rem;
+    border-top: 1px solid var(--rule);
+  }
+
+  .planned-label {
+    font-family: var(--font-ui);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #6c4aa8;
+  }
+
+  .planned-row {
+    border-top: 1px solid var(--rule);
+    border-bottom: none;
+  }
+
+  .planned-num {
+    font-family: var(--font-ui);
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--ink-faint);
+    min-width: 2rem;
+    text-align: right;
+    padding-top: 0.2em;
+    flex-shrink: 0;
+  }
+
+  .planned-title {
+    color: #6c4aa8;
+  }
+
+  .trail-link:hover .planned-title {
+    color: #6c4aa8;
+    opacity: 0.8;
   }
 </style>
