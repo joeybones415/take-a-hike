@@ -8,7 +8,7 @@ interface Props {
 const { title, description, ogImage, ogType = 'website' } = Astro.props;
 const siteTitle = 'Take a Hike';
 const fullTitle = title === siteTitle ? siteTitle : `${title} — ${siteTitle}`;
-const metaDescription = description ?? 'A personal atlas of places worth going.';
+const metaDescription = description ?? 'a personal map of my adventures.';
 const canonicalURL = new URL(Astro.url.pathname, Astro.site);
 const ogImageURL = ogImage ?? new URL('/og-default.svg', Astro.site).href;
 ---
@@ -49,7 +49,7 @@ const ogImageURL = ogImage ?? new URL('/og-default.svg', Astro.site).href;
     <a href="/" class="wordmark" aria-label="Take a Hike — home">
       Take&nbsp;<em>a</em>&nbsp;Hike
     </a>
-    <p class="tagline">A personal atlas of places worth going</p>
+    <p class="tagline">a personal map of my adventures</p>
   </header>
 
   <main>
